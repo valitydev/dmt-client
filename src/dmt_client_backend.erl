@@ -8,8 +8,8 @@
 
 -callback commit(
     dmt_client:vsn(),
-    dmt_client:commit(),
-    dmt_client:user_op_id(),
+    [dmt_client:operation()],
+    dmt_client:author_id(),
     dmt_client:opts()
 ) -> dmt_client:commit_response() | no_return().
 
@@ -20,12 +20,12 @@
 
 -spec commit(
     dmt_client:base_version(),
-    dmt_client:commit(),
-    dmt_client:user_op_id(),
+    [dmt_client:operation()],
+    dmt_client:author_id(),
     dmt_client:opts()
 ) -> dmt_client:commit_response() | no_return().
-commit(Version, Commit, UserOpID, Opts) ->
-    call(commit, [Version, Commit, UserOpID, Opts]).
+commit(Version, Operations, AuthorID, Opts) ->
+    call(commit, [Version, Operations, AuthorID, Opts]).
 
 -spec checkout_object(dmt_client:object_ref(), dmt_client:vsn(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().

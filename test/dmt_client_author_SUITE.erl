@@ -1,4 +1,4 @@
--module(dmt_client_user_op_SUITE).
+-module(dmt_client_author_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -9,11 +9,11 @@
 -export([all/0, groups/0, init_per_suite/1, end_per_suite/1]).
 %% Test cases
 -export([
-    create_user_op/1,
-    get_user_op/1,
-    delete_user_op/1,
-    get_nonexistent_user_op/1,
-    delete_nonexistent_user_op/1,
+    create_author/1,
+    get_author/1,
+    delete_author/1,
+    get_nonexistent_author/1,
+    delete_nonexistent_author/1,
     create_duplicate_email/1
 ]).
 
@@ -28,9 +28,9 @@ all() ->
 -spec groups() -> [{atom(), list(), [atom()]}].
 groups() ->
     [
-        {basic_operations, [], [create_user_op, get_user_op, delete_user_op]},
+        {basic_operations, [], [create_author, get_author, delete_author]},
         {error_cases, [parallel], [
-            get_nonexistent_user_op, delete_nonexistent_user_op, create_duplicate_email
+            get_nonexistent_author, delete_nonexistent_author, create_duplicate_email
         ]}
     ].
 
@@ -50,73 +50,73 @@ end_per_suite(Config) ->
 
 %% Test cases
 
--spec create_user_op(config()) -> _.
-create_user_op(_Config) ->
+-spec create_author(config()) -> _.
+create_author(_Config) ->
     % ok = dmt_client:checkout_object({category, #domain_CategoryRef{id = 1}}),
     Email = generate_email(),
     Name = generate_name(),
-    Params = #domain_conf_v2_UserOpParams{email = Email, name = Name},
-    UserOp = dmt_client_user_op:create(Params, #{}),
+    Params = #domain_conf_v2_AuthorParams{email = Email, name = Name},
+    Author = dmt_client_author:create(Params, #{}),
     ?assertMatch(
-        #domain_conf_v2_UserOp{
+        #domain_conf_v2_Author{
             id = _,
             email = Email,
             name = Name
         },
-        UserOp
+        Author
     ).
 
--spec get_user_op(config()) -> _.
-get_user_op(_Config) ->
+-spec get_author(config()) -> _.
+get_author(_Config) ->
     % Create user op first
-    Params = #domain_conf_v2_UserOpParams{email = generate_email(), name = generate_name()},
-    #domain_conf_v2_UserOp{id = ID} = dmt_client_user_op:create(Params, #{}),
+    Params = #domain_conf_v2_AuthorParams{email = generate_email(), name = generate_name()},
+    #domain_conf_v2_Author{id = ID} = dmt_client_author:create(Params, #{}),
 
     % Get and verify
-    UserOp = dmt_client_user_op:get(ID),
+    Author = dmt_client_author:get(ID),
     ?assertEqual(
-        Params#domain_conf_v2_UserOpParams.email,
-        UserOp#domain_conf_v2_UserOp.email
+        Params#domain_conf_v2_AuthorParams.email,
+        Author#domain_conf_v2_Author.email
     ),
-    ?assertEqual(Params#domain_conf_v2_UserOpParams.name, UserOp#domain_conf_v2_UserOp.name).
+    ?assertEqual(Params#domain_conf_v2_AuthorParams.name, Author#domain_conf_v2_Author.name).
 
--spec delete_user_op(config()) -> _.
-delete_user_op(_Config) ->
+-spec delete_author(config()) -> _.
+delete_author(_Config) ->
     % Create user op
-    Params = #domain_conf_v2_UserOpParams{email = generate_email(), name = generate_name()},
-    #domain_conf_v2_UserOp{id = ID} = dmt_client_user_op:create(Params, #{}),
+    Params = #domain_conf_v2_AuthorParams{email = generate_email(), name = generate_name()},
+    #domain_conf_v2_Author{id = ID} = dmt_client_author:create(Params, #{}),
 
     % Delete
-    ?assertEqual(ok, dmt_client_user_op:delete(ID)),
+    ?assertEqual(ok, dmt_client_author:delete(ID)),
 
     % Verify it's gone
-    ?assertThrow(#domain_conf_v2_UserOpNotFound{}, dmt_client_user_op:get(ID)).
+    ?assertThrow(#domain_conf_v2_AuthorNotFound{}, dmt_client_author:get(ID)).
 
--spec get_nonexistent_user_op(config()) -> _.
-get_nonexistent_user_op(_Config) ->
+-spec get_nonexistent_author(config()) -> _.
+get_nonexistent_author(_Config) ->
     ?assertThrow(
-        #domain_conf_v2_UserOpNotFound{},
-        dmt_client_user_op:get(<<"nonexistent_id">>)
+        #domain_conf_v2_AuthorNotFound{},
+        dmt_client_author:get(<<"nonexistent_id">>)
     ).
 
--spec delete_nonexistent_user_op(config()) -> _.
-delete_nonexistent_user_op(_Config) ->
+-spec delete_nonexistent_author(config()) -> _.
+delete_nonexistent_author(_Config) ->
     ?assertThrow(
-        #domain_conf_v2_UserOpNotFound{},
-        dmt_client_user_op:delete(<<"nonexistent_id">>)
+        #domain_conf_v2_AuthorNotFound{},
+        dmt_client_author:delete(<<"nonexistent_id">>)
     ).
 
 -spec create_duplicate_email(config()) -> _.
 create_duplicate_email(_Config) ->
     Email = generate_email(),
-    Params1 = #domain_conf_v2_UserOpParams{email = Email, name = generate_name()},
-    _UserOp1 = dmt_client_user_op:create(Params1, #{}),
+    Params1 = #domain_conf_v2_AuthorParams{email = Email, name = generate_name()},
+    _Author1 = dmt_client_author:create(Params1, #{}),
 
     % Try to create another user op with same email
-    Params2 = #domain_conf_v2_UserOpParams{email = Email, name = generate_name()},
+    Params2 = #domain_conf_v2_AuthorParams{email = Email, name = generate_name()},
     ?assertThrow(
-        #domain_conf_v2_UserAlreadyExists{},
-        dmt_client_user_op:create(Params2, #{})
+        #domain_conf_v2_AuthorAlreadyExists{},
+        dmt_client_author:create(Params2, #{})
     ).
 
 %% Internal functions
@@ -127,7 +127,7 @@ start_dmt_client() ->
         {service_urls, #{
             'Repository' => <<"http://dmt:8022/v1/domain/repository">>,
             'RepositoryClient' => <<"http://dmt:8022/v1/domain/repository_client">>,
-            'UserOpManagement' => <<"http://dmt:8022/v1/domain/user_op">>
+            'AuthorManagement' => <<"http://dmt:8022/v1/domain/author">>
         }}
     ]).
 
@@ -141,4 +141,4 @@ generate_email() ->
 
 generate_name() ->
     ID = genlib:unique(),
-    erlang:iolist_to_binary([<<"User ">>, ID]).
+    erlang:iolist_to_binary([<<"Author ">>, ID]).

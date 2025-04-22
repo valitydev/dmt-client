@@ -14,11 +14,11 @@
 -export([commit/4]).
 -export([get_last_version/0]).
 
-% UserOpManagement API
+% AuthorManagement API
 
--export([user_op_create/2]).
--export([user_op_get/1]).
--export([user_op_delete/1]).
+-export([author_create/2]).
+-export([author_get/1]).
+-export([author_delete/1]).
 
 %% Health check API
 -export([health_check/0]).
@@ -35,15 +35,15 @@
 -export_type([version/0]).
 -export_type([base_version/0]).
 -export_type([versioned_object/0]).
--export_type([commit/0]).
+-export_type([operation/0]).
 -export_type([commit_response/0]).
 -export_type([object_ref/0]).
 -export_type([domain_object/0]).
 -export_type([opts/0]).
 
--export_type([user_op_id/0]).
--export_type([user_op/0]).
--export_type([user_op_params/0]).
+-export_type([author_id/0]).
+-export_type([author/0]).
+-export_type([author_params/0]).
 
 -include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
 
@@ -51,7 +51,7 @@
 -type vsn_created_at() :: dmsl_base_thrift:'Timestamp'().
 -type version() :: base_version() | latest.
 -type base_version() :: non_neg_integer().
--type commit() :: dmsl_domain_conf_v2_thrift:'Commit'().
+-type operation() :: dmsl_domain_conf_v2_thrift:'Operation'().
 -type object_ref() :: dmsl_domain_thrift:'Reference'().
 -type versioned_object() :: dmsl_domain_conf_v2_thrift:'VersionedObject'().
 -type domain_object() :: dmsl_domain_thrift:'ReflessDomainObject'().
@@ -61,9 +61,9 @@
     woody_context => woody_context:ctx()
 }.
 
--type user_op_id() :: dmsl_domain_conf_v2_thrift:'UserOpID'().
--type user_op() :: dmsl_domain_conf_v2_thrift:'UserOp'().
--type user_op_params() :: dmsl_domain_conf_v2_thrift:'UserOpParams'().
+-type author_id() :: dmsl_domain_conf_v2_thrift:'AuthorID'().
+-type author() :: dmsl_domain_conf_v2_thrift:'Author'().
+-type author_params() :: dmsl_domain_conf_v2_thrift:'AuthorParams'().
 
 %%% API
 
@@ -83,31 +83,31 @@ do_checkout_object(ObjectReference, Reference, Opts) ->
     Version = ref_to_version(Reference),
     dmt_client_cache:get_object(ObjectReference, Version, Opts).
 
--spec commit(base_version(), commit(), user_op_id()) -> commit_response() | no_return().
-commit(Version, Commit, UserOpID) ->
-    commit(Version, Commit, UserOpID, #{}).
+-spec commit(base_version(), [operation()], author_id()) -> commit_response() | no_return().
+commit(Version, Operations, AuthorID) ->
+    commit(Version, Operations, AuthorID, #{}).
 
--spec commit(base_version(), commit(), user_op_id(), opts()) -> commit_response() | no_return().
-commit(Version, Commit, UserOpID, Opts) ->
-    dmt_client_backend:commit(Version, Commit, UserOpID, Opts).
+-spec commit(base_version(), [operation()], author_id(), opts()) -> commit_response() | no_return().
+commit(Version, Operations, AuthorID, Opts) ->
+    dmt_client_backend:commit(Version, Operations, AuthorID, Opts).
 
 -spec get_last_version() -> number() | no_return().
 get_last_version() ->
     dmt_client_backend:get_last_version(#{}).
 
-% UserOpManagement
+% AuthorManagement
 
--spec user_op_create(user_op_params(), opts()) -> user_op().
-user_op_create(Params, Opts) ->
-    dmt_client_user_op:create(Params, Opts).
+-spec author_create(author_params(), opts()) -> author().
+author_create(Params, Opts) ->
+    dmt_client_author:create(Params, Opts).
 
--spec user_op_get(user_op_id()) -> user_op().
-user_op_get(ID) ->
-    dmt_client_user_op:get(ID).
+-spec author_get(author_id()) -> author().
+author_get(ID) ->
+    dmt_client_author:get(ID).
 
--spec user_op_delete(user_op_id()) -> ok.
-user_op_delete(ID) ->
-    dmt_client_user_op:delete(ID).
+-spec author_delete(author_id()) -> ok.
+author_delete(ID) ->
+    dmt_client_author:delete(ID).
 
 %% Health check API
 
