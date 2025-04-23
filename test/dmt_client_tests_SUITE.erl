@@ -20,7 +20,7 @@
     checkout_latest_object/1,
     commit_insert_object/1,
     commit_update_object/1,
-    % commit_remove_object/1,
+    %% commit_remove_object/1,
     commit_multiple_operations/1,
     version_sequence_operations/1,
     commit_conflict_handling/1
@@ -49,7 +49,7 @@ groups() ->
             checkout_object_by_version,
             commit_insert_object,
             commit_update_object,
-            % commit_remove_object,
+            %% commit_remove_object,
             commit_multiple_operations,
             commit_conflict_handling
         ]}
@@ -66,7 +66,7 @@ init_per_suite(Config) ->
         {service_urls, #{
             'Repository' => <<"http://dmt:8022/v1/domain/repository">>,
             'RepositoryClient' => <<"http://dmt:8022/v1/domain/repository_client">>,
-            'UserOpManagement' => <<"http://dmt:8022/v1/domain/user_op">>
+            'AuthorManagement' => <<"http://dmt:8022/v1/domain/author">>
         }}
     ]),
     [{apps, Apps} | Config].
@@ -128,7 +128,7 @@ commit_update_object(_Config) ->
 
     {_, _, Object2} = make_test_object(Ref, <<"new_name">>),
     #domain_conf_v2_CommitResponse{version = Version2} =
-        commit_update(Version1, Ref, Object2),
+        commit_update(Version1, Object2),
     ?assert(Version2 > Version1),
 
     #domain_conf_v2_VersionedObject{
@@ -136,22 +136,20 @@ commit_update_object(_Config) ->
     } = dmt_client:checkout_object(Ref),
     ?assertEqual(Object2, Result).
 
-% TODO Remove doesn't work yet
+%% -spec commit_remove_object(config()) -> _.
+%% commit_remove_object(_Config) ->
+%%     {Ref, ROObject, _} = make_test_object(make_domain_ref()),
+%%     #domain_conf_v2_CommitResponse{version = Version1} =
+%%         commit_insert(ROObject, Ref),
 
-% -spec commit_remove_object(config()) -> _.
-% commit_remove_object(_Config) ->
-%     {Ref, ROObject, _} = make_test_object(make_domain_ref()),
-%     #domain_conf_v2_CommitResponse{version = Version1} =
-%         commit_insert(ROObject, Ref),
+%%     #domain_conf_v2_CommitResponse{version = Version2} =
+%%         commit_remove(Version1, Ref),
+%%     ?assert(Version2 > Version1),
 
-%     #domain_conf_v2_CommitResponse{version = Version2} =
-%         commit_remove(Version1, Ref),
-%     ?assert(Version2 > Version1),
-
-%     ?assertThrow(
-%         #domain_conf_v2_ObjectNotFound{},
-%         dmt_client:checkout_object(Ref, Version2)
-%     ).
+%%     ?assertThrow(
+%%         #domain_conf_v2_ObjectNotFound{},
+%%         dmt_client:checkout_object(Ref, Version2)
+%%     ).
 
 -spec commit_multiple_operations(config()) -> _.
 commit_multiple_operations(_Config) ->
@@ -209,7 +207,7 @@ version_sequence_operations(_Config) ->
                 description = <<"new_desc">>
             }
         }},
-    Version2 = commit_update(Version1, Ref, Object2),
+    Version2 = commit_update(Version1, Object2),
     ?assert(Version2 > Version1),
 
     #domain_conf_v2_VersionedObject{object = Result2} =
@@ -240,10 +238,10 @@ make_test_object({category, CategoryRef} = FullRef, Name) ->
     Object = {category, #domain_CategoryObject{ref = CategoryRef, data = Category}},
     {FullRef, ReflessObject, Object}.
 
-make_user_op_id() ->
-    Params = #domain_conf_v2_UserOpParams{email = genlib:unique(), name = genlib:unique()},
-    #domain_conf_v2_UserOp{id = ID} =
-        dmt_client_user_op:create(Params, #{}),
+make_author_id() ->
+    Params = #domain_conf_v2_AuthorParams{email = genlib:unique(), name = genlib:unique()},
+    #domain_conf_v2_Author{id = ID} =
+        dmt_client_author:create(Params, #{}),
     ID.
 
 commit_insert(Object, Ref) ->
@@ -252,21 +250,18 @@ commit_insert(Object, Ref) ->
 commit_insert(Version, Object, Ref) ->
     % Get version from any existing object or start with 0
     Op = {insert, #domain_conf_v2_InsertOp{object = Object, force_ref = Ref}},
-    Commit = #domain_conf_v2_Commit{ops = [Op]},
-    UserOpID = make_user_op_id(),
-    dmt_client:commit(Version, Commit, UserOpID).
+    AuthorID = make_author_id(),
+    dmt_client:commit(Version, [Op], AuthorID).
 
-commit_update(Version, Ref, Object) ->
-    Op = {update, #domain_conf_v2_UpdateOp{targeted_ref = Ref, new_object = Object}},
-    Commit = #domain_conf_v2_Commit{ops = [Op]},
-    UserOpID = make_user_op_id(),
-    dmt_client:commit(Version, Commit, UserOpID).
+commit_update(Version, Object) ->
+    Op = {update, #domain_conf_v2_UpdateOp{object = Object}},
+    AuthorID = make_author_id(),
+    dmt_client:commit(Version, [Op], AuthorID).
 
-% commit_remove(Version, Ref) ->
-%     Op = {remove, #domain_conf_v2_RemoveOp{ref = Ref}},
-%     Commit = #domain_conf_v2_Commit{ops = [Op]},
-%     UserOpID = make_user_op_id(),
-%     dmt_client:commit(Version, Commit, UserOpID).
+%% commit_remove(Version, Ref) ->
+%%     Op = {remove, #domain_conf_v2_RemoveOp{ref = Ref}},
+%%     AuthorID = make_author_id(),
+%%     dmt_client:commit(Version, [Op], AuthorID).
 
 commit_batch_insert(Objects) ->
     Version = 1,
@@ -277,6 +272,5 @@ commit_batch_insert(Objects) ->
         }}
      || {Ref, Obj, _} <- Objects
     ],
-    Commit = #domain_conf_v2_Commit{ops = Ops},
-    UserOpID = make_user_op_id(),
-    dmt_client:commit(Version, Commit, UserOpID).
+    AuthorID = make_author_id(),
+    dmt_client:commit(Version, Ops, AuthorID).

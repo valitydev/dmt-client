@@ -173,7 +173,7 @@ cache_invalidation(_Config) ->
     % Update object
     {_, _, Object2} = make_test_object(Ref, <<"updated">>),
     #domain_conf_v2_CommitResponse{} =
-        commit_update(Version1, Ref, Object2),
+        commit_update(Version1, Object2),
 
     % Check that we get updated version when requesting latest
     #domain_conf_v2_VersionedObject{object = Result2} =
@@ -207,27 +207,21 @@ make_test_object(
     Object = {category, #domain_CategoryObject{ref = CategoryRef, data = Category}},
     {Ref, ReflessObject, Object}.
 
-make_user_op_id() ->
-    Params = #domain_conf_v2_UserOpParams{email = genlib:unique(), name = genlib:unique()},
-    #domain_conf_v2_UserOp{id = ID} =
-        dmt_client_user_op:create(Params, #{}),
+make_author_id() ->
+    Params = #domain_conf_v2_AuthorParams{email = genlib:unique(), name = genlib:unique()},
+    #domain_conf_v2_Author{id = ID} =
+        dmt_client_author:create(Params, #{}),
     ID.
 
 commit_insert(Object, Reference) ->
     Op = {insert, #domain_conf_v2_InsertOp{object = Object, force_ref = Reference}},
-    Commit = #domain_conf_v2_Commit{ops = [Op]},
-    UserOpID = make_user_op_id(),
-    dmt_client:commit(1, Commit, UserOpID).
+    AuthorID = make_author_id(),
+    dmt_client:commit(1, [Op], AuthorID).
 
-commit_update(Version, Ref, Object) ->
-    Op =
-        {update, #domain_conf_v2_UpdateOp{
-            targeted_ref = Ref,
-            new_object = Object
-        }},
-    Commit = #domain_conf_v2_Commit{ops = [Op]},
-    UserOpID = make_user_op_id(),
-    dmt_client:commit(Version, Commit, UserOpID).
+commit_update(Version, Object) ->
+    Op = {update, #domain_conf_v2_UpdateOp{object = Object}},
+    AuthorID = make_author_id(),
+    dmt_client:commit(Version, [Op], AuthorID).
 
 create_large_binary(Size) ->
     list_to_binary(lists:duplicate(Size, $a)).
@@ -248,7 +242,7 @@ start_dmt_client(ExtraConfig) ->
                 {service_urls, #{
                     'Repository' => <<"http://dmt:8022/v1/domain/repository">>,
                     'RepositoryClient' => <<"http://dmt:8022/v1/domain/repository_client">>,
-                    'UserOpManagement' => <<"http://dmt:8022/v1/domain/user_op">>
+                    'AuthorManagement' => <<"http://dmt:8022/v1/domain/author">>
                 }}
             ],
     genlib_app:start_application_with(dmt_client, Config).

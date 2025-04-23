@@ -236,12 +236,10 @@ schedule_fetch(ObjectRef, VersionReference, Opts) ->
         fun() ->
             Result =
                 case fetch(ObjectRef, VersionReference, Opts) of
-                    #domain_conf_v2_VersionedObject{
-                        global_version = Version0,
-                        created_at = CreatedAt
-                    } = Object ->
+                    #domain_conf_v2_VersionedObject{info = ObjectInfo} = Object ->
+                        #domain_conf_v2_VersionedObjectInfo{version = Version0, changed_at = ChangedAt} = ObjectInfo,
                         Version1 = {version, Version0},
-                        put_object_into_table(ObjectRef, Version1, Object, CreatedAt),
+                        put_object_into_table(ObjectRef, Version1, Object, ChangedAt),
                         %% This will be called every time some new object is required.
                         %% Maybe consider alternative
                         cast(cleanup),
@@ -330,10 +328,15 @@ timestamp() ->
 
 -define(TEST_REF, {test_type, <<"test_id">>}).
 -define(TEST_OBJ(Id), #{name => <<"test">>, id => Id}).
+-define(TEST_AUTHOR, #domain_conf_v2_Author{id = ~b"AUTHOR_id", name = ~b"AUTHOR_NAME", email = ~b"AUTHOR_EMAIL"}).
 -define(TEST_VERSIONED_OBJ(Ver), #domain_conf_v2_VersionedObject{
-    global_version = Ver,
-    object = ?TEST_OBJ(Ver),
-    created_at = <<"2024-01-01T00:00:00Z">>
+    info = #domain_conf_v2_VersionedObjectInfo{
+        version = Ver,
+        ref = ?TEST_REF,
+        changed_by = ?TEST_AUTHOR,
+        changed_at = <<"2024-01-01T00:00:00Z">>
+    },
+    object = ?TEST_OBJ(Ver)
 }).
 
 -dialyzer({nowarn_function, dmt_cache_test_/0}).
