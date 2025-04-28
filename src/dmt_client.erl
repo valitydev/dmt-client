@@ -13,7 +13,7 @@
 -export([checkout_object/3]).
 -export([commit/3]).
 -export([commit/4]).
--export([get_last_version/0]).
+-export([get_latest_version/0]).
 
 % AuthorManagement API
 
@@ -122,9 +122,9 @@ commit(Version, Operations, AuthorID) ->
 commit(Version, Operations, AuthorID, Opts) ->
     dmt_client_backend:commit(Version, Operations, AuthorID, Opts).
 
--spec get_last_version() -> number() | no_return().
-get_last_version() ->
-    dmt_client_backend:get_last_version(#{}).
+-spec get_latest_version() -> number() | no_return().
+get_latest_version() ->
+    dmt_client_backend:get_latest_version(#{}).
 
 % AuthorManagement
 

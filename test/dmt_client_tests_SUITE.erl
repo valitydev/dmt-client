@@ -15,6 +15,7 @@
 
 %% Test cases
 -export([
+    get_latest_version/1,
     checkout_nonexistent_object/1,
     checkout_object_by_version/1,
     checkout_latest_object/1,
@@ -41,8 +42,10 @@ all() ->
 groups() ->
     [
         {sequential_operations, [], [
+            get_latest_version,
             checkout_latest_object,
-            version_sequence_operations
+            version_sequence_operations,
+            get_latest_version
         ]},
         {parallel_operations, [parallel], [
             checkout_nonexistent_object,
@@ -96,6 +99,10 @@ checkout_object_by_version(_Config) ->
         object = Result
     } = dmt_client:checkout_object(Ref, Version),
     ?assertEqual(Object, Result).
+
+-spec get_latest_version(config()) -> _.
+get_latest_version(_Config) ->
+    ?assertMatch(Version when is_integer(Version), dmt_client:get_latest_version()).
 
 -spec checkout_latest_object(config()) -> _.
 checkout_latest_object(_Config) ->

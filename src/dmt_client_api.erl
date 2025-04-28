@@ -5,7 +5,7 @@
 -export([search/6]).
 -export([commit/4]).
 -export([checkout_object/3]).
--export([get_last_version/1]).
+-export([get_latest_version/1]).
 
 -include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
 
@@ -36,9 +36,9 @@ commit(Version, Operations, AuthorID, Opts) ->
 checkout_object(ObjectReference, VersionRef, Opts) ->
     call('RepositoryClient', 'CheckoutObject', {VersionRef, ObjectReference}, Opts).
 
--spec get_last_version(dmt_client:opts()) -> number() | no_return().
-get_last_version(Opts) ->
-    call('RepositoryClient', 'GetLatestGlobalVersion', {}, Opts).
+-spec get_latest_version(dmt_client:opts()) -> number() | no_return().
+get_latest_version(Opts) ->
+    call('Repository', 'GetLatestVersion', {}, Opts).
 
 call(ServiceName, Function, Args, Opts) ->
     Url = get_service_url(ServiceName),
