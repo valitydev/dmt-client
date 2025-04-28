@@ -9,6 +9,10 @@
 -export([get_object/3]).
 -export([do_get_object/2]).
 
+%% Internal API
+
+-export([put_object_into_table/4]).
+
 %% gen_server callbacks
 
 -export([init/1]).
@@ -192,6 +196,12 @@ do_get_object(ObjectRef, Version) ->
             {error, object_not_found}
     end.
 
+-spec put_object_into_table(
+    dmt_client:object_ref(),
+    dmt_client:vsn(),
+    dmt_client:versioned_object(),
+    dmt_client:vsn_created_at()
+) -> boolean().
 put_object_into_table(Ref, Version, Object, CreatedAt) ->
     true = ets:insert(?TABLE, #object{
         id = {Ref, Version},

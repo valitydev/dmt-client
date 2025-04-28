@@ -7,6 +7,7 @@
 -behaviour(application).
 
 %% API
+-export([checkout/2]).
 -export([checkout_object/1]).
 -export([checkout_object/2]).
 -export([checkout_object/3]).
@@ -45,6 +46,12 @@
 -export_type([author/0]).
 -export_type([author_params/0]).
 
+-export_type([object_type/0]).
+-export_type([search_pattern/0]).
+-export_type([limit/0]).
+-export_type([continuation_token/0]).
+-export_type([search_full_response/0]).
+
 -include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
 
 -type vsn() :: {version, non_neg_integer()} | {head, dmsl_domain_conf_v2_thrift:'Head'()}.
@@ -54,7 +61,7 @@
 -type operation() :: dmsl_domain_conf_v2_thrift:'Operation'().
 -type object_ref() :: dmsl_domain_thrift:'Reference'().
 -type versioned_object() :: dmsl_domain_conf_v2_thrift:'VersionedObject'().
--type domain_object() :: dmsl_domain_thrift:'ReflessDomainObject'().
+-type domain_object() :: dmsl_domain_thrift:'DomainObject'().
 -type commit_response() :: dmsl_domain_conf_v2_thrift:'CommitResponse'().
 -type opts() :: #{
     transport_opts => woody_client_thrift_http_transport:transport_options(),
@@ -65,7 +72,31 @@
 -type author() :: dmsl_domain_conf_v2_thrift:'Author'().
 -type author_params() :: dmsl_domain_conf_v2_thrift:'AuthorParams'().
 
+%% TODO Move those to backend behaviour maybe?
+-type object_type() :: dmsl_domain_thrift:'DomainObjectType'().
+-type search_pattern() :: binary().
+-type limit() :: pos_integer().
+-type continuation_token() :: dmsl_domain_conf_v2_thrift:'ContinuationToken'().
+-type search_full_response() :: dmsl_domain_conf_v2_thrift:'SearchFullResponse'().
+
 %%% API
+
+-spec checkout(version(), opts()) -> #{object_ref() => domain_object()}.
+checkout(Version, Opts) ->
+    VersionReference =
+        case Version of
+            latest -> {head, #domain_conf_v2_Head{}};
+            V when is_integer(V) -> {version, V}
+        end,
+    Objects = search_and_collect_objects(VersionReference, ~b"*", undefined, Opts),
+    maps:map(
+        fun(Ref, #domain_conf_v2_VersionedObject{info = Info, object = Object} = VersionedObject) ->
+            ChangedAt = Info#domain_conf_v2_VersionedObjectInfo.changed_at,
+            _ = dmt_client_cache:put_object_into_table(Ref, VersionReference, VersionedObject, ChangedAt),
+            Object
+        end,
+        Objects
+    ).
 
 -spec checkout_object(object_ref()) -> versioned_object() | no_return().
 checkout_object(ObjectReference) ->
@@ -162,3 +193,26 @@ ref_to_version(Version) when is_integer(Version) ->
     {version, Version};
 ref_to_version(latest) ->
     {head, #domain_conf_v2_Head{}}.
+
+search_and_collect_objects(Version, Pattern, Type, Opts) ->
+    search_and_collect_objects(Version, Pattern, Type, Opts, 10, undefined, #{}).
+
+search_and_collect_objects(Version, Pattern, Type, Opts, Limit, ContinuationToken0, CollectedObjects0) ->
+    #domain_conf_v2_SearchFullResponse{
+        result = Result,
+        total_count = TotalCount,
+        continuation_token = ContinuationToken1
+    } = dmt_client_backend:search(Version, Pattern, Type, Limit, ContinuationToken0, Opts),
+    CollectedObjects1 = lists:foldl(
+        fun(#domain_conf_v2_VersionedObject{info = Info} = VersionedObject, Objects) ->
+            Objects#{Info#domain_conf_v2_VersionedObjectInfo.ref => VersionedObject}
+        end,
+        CollectedObjects0,
+        Result
+    ),
+    case maps:size(CollectedObjects1) < TotalCount of
+        true ->
+            search_and_collect_objects(Version, Pattern, Type, Opts, Limit, ContinuationToken1, CollectedObjects1);
+        false ->
+            CollectedObjects1
+    end.

@@ -1,10 +1,20 @@
 -module(dmt_client_backend).
 
+-export([search/6]).
 -export([commit/4]).
 -export([checkout_object/3]).
 -export([get_last_version/1]).
 
 %%% Behaviour callbacks
+
+-callback search(
+    dmt_client:vsn(),
+    dmt_client:search_pattern(),
+    dmt_client:object_type(),
+    dmt_client:limit(),
+    dmt_client:continuation_token() | undefined,
+    dmt_client:opts()
+) -> dmt_client:search_full_response() | no_return().
 
 -callback commit(
     dmt_client:vsn(),
@@ -17,6 +27,17 @@
     dmt_client:versioned_object() | no_return().
 
 %%% API
+
+-spec search(
+    dmt_client:vsn(),
+    dmt_client:search_pattern(),
+    dmt_client:object_type(),
+    dmt_client:limit(),
+    dmt_client:continuation_token() | undefined,
+    dmt_client:opts()
+) -> dmt_client:search_full_response() | no_return().
+search(Version, Pattern, Type, Limit, Token, Opts) ->
+    call(search, [Version, Pattern, Type, Limit, Token, Opts]).
 
 -spec commit(
     dmt_client:base_version(),

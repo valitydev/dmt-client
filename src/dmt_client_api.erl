@@ -2,9 +2,24 @@
 
 -behaviour(dmt_client_backend).
 
+-export([search/6]).
 -export([commit/4]).
 -export([checkout_object/3]).
 -export([get_last_version/1]).
+
+-include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
+
+-spec search(
+    dmt_client:vsn(),
+    dmt_client:search_pattern(),
+    dmt_client:object_type(),
+    dmt_client:limit(),
+    dmt_client:continuation_token() | undefined,
+    dmt_client:opts()
+) -> dmt_client:search_full_response() | no_return().
+search(Version, Pattern, Type, Limit, Token, Opts) ->
+    Params = make_search_params(Pattern, Version, Limit, Type, Token),
+    call('Repository', 'SearchFullObjects', {Params}, Opts).
 
 -spec commit(
     dmt_client:vsn(),
@@ -67,3 +82,17 @@ get_service_module('RepositoryClient') ->
 
 get_event_handlers() ->
     genlib_app:env(dmt_client, woody_event_handlers, []).
+
+make_search_params(Pattern, Version, Limit, Type, Token) ->
+    #domain_conf_v2_SearchRequestParams{
+        query = Pattern,
+        version =
+            case Version of
+                {version, V} -> V;
+                %% Head
+                _ -> undefined
+            end,
+        limit = Limit,
+        type = Type,
+        continuation_token = Token
+    }.
