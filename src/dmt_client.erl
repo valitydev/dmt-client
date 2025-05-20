@@ -198,15 +198,11 @@ search_and_collect_objects(Version, Pattern, Type, Limit, Opts) ->
     Getter = fun(Token) ->
         dmt_client_backend:search(Version, Pattern, Type, Limit, Token, Opts)
     end,
-    collect_objects(Getter(undefined), 0, [], Getter).
+    collect_objects(Getter(undefined), [], Getter).
 
--define(SEARCH_RESULT(Chunk, TotalCount, Token), #domain_conf_v2_SearchFullResponse{
-    result = Chunk, total_count = TotalCount, continuation_token = Token
-}).
+-define(SEARCH_RESULT(Chunk, Token), #domain_conf_v2_SearchFullResponse{result = Chunk, continuation_token = Token}).
 
-collect_objects(?SEARCH_RESULT(Chunk, TotalCount, _), Count, Chunks, _Getter) when
-    Count + length(Chunk) >= TotalCount
-->
+collect_objects(?SEARCH_RESULT(Chunk, Token), Chunks, _Getter) when Token =:= undefined ->
     lists:flatten(lists:reverse([Chunk | Chunks]));
-collect_objects(?SEARCH_RESULT(Chunk, _, Token), Count, Chunks, Getter) ->
-    collect_objects(Getter(Token), Count + length(Chunk), [Chunk | Chunks], Getter).
+collect_objects(?SEARCH_RESULT(Chunk, Token), Chunks, Getter) ->
+    collect_objects(Getter(Token), [Chunk | Chunks], Getter).
