@@ -11,7 +11,7 @@
 
 %% Internal API
 
--export([put_object_into_table/4]).
+-export([update_with_objects/2]).
 
 %% gen_server callbacks
 
@@ -106,7 +106,7 @@ init(_) ->
 -spec handle_call(term(), {pid(), term()}, state()) -> {reply, term(), state()}.
 handle_call({fetch_object_version, ObjectRef, Version, Opts}, From, State) ->
     % Check if object appeared between call and handle
-    case ets:member(?TABLE, {ObjectRef, Version}) of
+    case is_cached(Version, ObjectRef) of
         true ->
             {reply, {ok, {ObjectRef, Version}}, State};
         false ->
@@ -178,7 +178,7 @@ cast(Msg) ->
 ensure_object_version(ObjectRef, #domain_conf_v2_Head{}, Opts) ->
     call({fetch_object_version, ObjectRef, #domain_conf_v2_Head{}, Opts});
 ensure_object_version(ObjectRef, Version, Opts) ->
-    case ets:member(?TABLE, {ObjectRef, Version}) of
+    case is_cached(Version, ObjectRef) of
         true ->
             {ok, {ObjectRef, Version}};
         false ->
@@ -212,6 +212,26 @@ put_object_into_table(Ref, Version, Object, CreatedAt) ->
         last_access = timestamp()
     }).
 
+-spec update_with_objects(dmt_client:vsn(), [dmt_client:versioned_object()]) -> ok.
+update_with_objects(VersionReference, VersionedObjects) ->
+    lists:foreach(
+        fun(
+            #domain_conf_v2_VersionedObject{
+                info = #domain_conf_v2_VersionedObjectInfo{changed_at = ChangedAt},
+                object = Object
+            } = VersionedObject
+        ) ->
+            ObjectReference = dmt_client_object:get_object_ref(Object),
+            case is_cached(VersionReference, ObjectReference) of
+                %% NOTE No need to update entry, since versioned objects are immutable
+                true -> ok;
+                false -> put_object_into_table(ObjectReference, VersionReference, VersionedObject, ChangedAt)
+            end
+        end,
+        VersionedObjects
+    ),
+    cast(cleanup).
+
 -spec get_all_objects() -> [object()].
 get_all_objects() ->
     ets:tab2list(?TABLE).
@@ -230,7 +250,7 @@ maybe_fetch(ObjectRef, VersionReference, ReplyTo, DispatchFun, Waiters, Opts) ->
             Waiters#{WaiterKey => [{ReplyTo, DispatchFun} | List]};
         error ->
             % Double check the cache before scheduling a fetch
-            case ets:member(?TABLE, {ObjectRef, VersionReference}) of
+            case is_cached(VersionReference, ObjectRef) of
                 true ->
                     % Object appeared in cache while we were processing
                     Waiters;
@@ -240,6 +260,9 @@ maybe_fetch(ObjectRef, VersionReference, ReplyTo, DispatchFun, Waiters, Opts) ->
                     Waiters#{WaiterKey => [{ReplyTo, DispatchFun}]}
             end
     end.
+
+is_cached(VersionReference, ObjectReference) ->
+    ets:member(?TABLE, {ObjectReference, VersionReference}).
 
 schedule_fetch(ObjectRef, VersionReference, Opts) ->
     spawn_link(
@@ -342,7 +365,6 @@ timestamp() ->
 -define(TEST_VERSIONED_OBJ(Ver), #domain_conf_v2_VersionedObject{
     info = #domain_conf_v2_VersionedObjectInfo{
         version = Ver,
-        ref = ?TEST_REF,
         changed_by = ?TEST_AUTHOR,
         changed_at = <<"2024-01-01T00:00:00Z">>
     },

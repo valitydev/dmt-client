@@ -7,10 +7,11 @@
 -behaviour(application).
 
 %% API
--export([checkout/2]).
+-export([checkout_all/2]).
 -export([checkout_object/1]).
 -export([checkout_object/2]).
 -export([checkout_object/3]).
+-export([checkout_objects_by_type/3]).
 -export([commit/3]).
 -export([commit/4]).
 -export([get_latest_version/0]).
@@ -81,22 +82,9 @@
 
 %%% API
 
--spec checkout(version(), opts()) -> #{object_ref() => domain_object()}.
-checkout(Version, Opts) ->
-    VersionReference =
-        case Version of
-            latest -> {head, #domain_conf_v2_Head{}};
-            V when is_integer(V) -> {version, V}
-        end,
-    Objects = search_and_collect_objects(VersionReference, ~b"*", undefined, Opts),
-    maps:map(
-        fun(Ref, #domain_conf_v2_VersionedObject{info = Info, object = Object} = VersionedObject) ->
-            ChangedAt = Info#domain_conf_v2_VersionedObjectInfo.changed_at,
-            _ = dmt_client_cache:put_object_into_table(Ref, VersionReference, VersionedObject, ChangedAt),
-            Object
-        end,
-        Objects
-    ).
+-spec checkout_all(version(), opts()) -> [versioned_object()].
+checkout_all(Reference, Opts) ->
+    do_search(Reference, undefined, Opts).
 
 -spec checkout_object(object_ref()) -> versioned_object() | no_return().
 checkout_object(ObjectReference) ->
@@ -109,6 +97,16 @@ checkout_object(ObjectReference, Reference) ->
 -spec checkout_object(object_ref(), version(), opts()) -> versioned_object() | no_return().
 checkout_object(ObjectReference, Reference, Opts) ->
     unwrap(do_checkout_object(ObjectReference, Reference, Opts)).
+
+-spec checkout_objects_by_type(version(), object_type(), opts()) -> [versioned_object()] | no_return().
+checkout_objects_by_type(Reference, Type, Opts) ->
+    do_search(Reference, Type, Opts).
+
+do_search(Reference, Type, Opts) ->
+    Version = ref_to_version(Reference),
+    VersionedObjects = search_and_collect_objects(Version, ~b"*", Type, Opts),
+    ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
+    VersionedObjects.
 
 do_checkout_object(ObjectReference, Reference, Opts) ->
     Version = ref_to_version(Reference),
@@ -195,24 +193,15 @@ ref_to_version(latest) ->
     {head, #domain_conf_v2_Head{}}.
 
 search_and_collect_objects(Version, Pattern, Type, Opts) ->
-    search_and_collect_objects(Version, Pattern, Type, Opts, 10, undefined, #{}).
+    search_and_collect_objects(Version, Pattern, Type, Opts, 10, undefined, 0, []).
 
-search_and_collect_objects(Version, Pattern, Type, Opts, Limit, ContinuationToken0, CollectedObjects0) ->
-    #domain_conf_v2_SearchFullResponse{
-        result = Result,
-        total_count = TotalCount,
-        continuation_token = ContinuationToken1
-    } = dmt_client_backend:search(Version, Pattern, Type, Limit, ContinuationToken0, Opts),
-    CollectedObjects1 = lists:foldl(
-        fun(#domain_conf_v2_VersionedObject{info = Info} = VersionedObject, Objects) ->
-            Objects#{Info#domain_conf_v2_VersionedObjectInfo.ref => VersionedObject}
-        end,
-        CollectedObjects0,
-        Result
-    ),
-    case maps:size(CollectedObjects1) < TotalCount of
+search_and_collect_objects(Version, Pattern, Type, Opts, Limit, Token0, Count0, Chunks) ->
+    #domain_conf_v2_SearchFullResponse{result = Chunk, total_count = TotalCount, continuation_token = Token1} =
+        dmt_client_backend:search(Version, Pattern, Type, Limit, Token0, Opts),
+    Count1 = Count0 + length(Chunk),
+    case Count1 < TotalCount of
         true ->
-            search_and_collect_objects(Version, Pattern, Type, Opts, Limit, ContinuationToken1, CollectedObjects1);
+            search_and_collect_objects(Version, Pattern, Type, Opts, Limit, Token1, Count1, [Chunk | Chunks]);
         false ->
-            CollectedObjects1
+            lists:flatten(lists:reverse(Chunks))
     end.
