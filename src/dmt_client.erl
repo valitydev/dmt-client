@@ -82,6 +82,8 @@
 
 %%% API
 
+-define(CHUNK_SIZE, 5).
+
 -spec checkout_all(version(), opts()) -> [versioned_object()].
 checkout_all(Reference, Opts) ->
     do_search(Reference, undefined, Opts).
@@ -104,7 +106,7 @@ checkout_objects_by_type(Reference, Type, Opts) ->
 
 do_search(Reference, Type, Opts) ->
     Version = ref_to_version(Reference),
-    VersionedObjects = search_and_collect_objects(Version, ~b"*", Type, Opts),
+    VersionedObjects = search_and_collect_objects(Version, ~b"*", Type, ?CHUNK_SIZE, Opts),
     ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
     VersionedObjects.
 
@@ -192,16 +194,19 @@ ref_to_version(Version) when is_integer(Version) ->
 ref_to_version(latest) ->
     {head, #domain_conf_v2_Head{}}.
 
-search_and_collect_objects(Version, Pattern, Type, Opts) ->
-    search_and_collect_objects(Version, Pattern, Type, Opts, 10, undefined, 0, []).
+search_and_collect_objects(Version, Pattern, Type, Limit, Opts) ->
+    Getter = fun(Token) ->
+        dmt_client_backend:search(Version, Pattern, Type, Limit, Token, Opts)
+    end,
+    collect_objects(Getter(undefined), 0, [], Getter).
 
-search_and_collect_objects(Version, Pattern, Type, Opts, Limit, Token0, Count0, Chunks) ->
-    #domain_conf_v2_SearchFullResponse{result = Chunk, total_count = TotalCount, continuation_token = Token1} =
-        dmt_client_backend:search(Version, Pattern, Type, Limit, Token0, Opts),
-    Count1 = Count0 + length(Chunk),
-    case Count1 < TotalCount of
-        true ->
-            search_and_collect_objects(Version, Pattern, Type, Opts, Limit, Token1, Count1, [Chunk | Chunks]);
-        false ->
-            lists:flatten(lists:reverse(Chunks))
-    end.
+-define(SEARCH_RESULT(Chunk, TotalCount, Token), #domain_conf_v2_SearchFullResponse{
+    result = Chunk, total_count = TotalCount, continuation_token = Token
+}).
+
+collect_objects(?SEARCH_RESULT(Chunk, TotalCount, _), Count, Chunks, _Getter) when
+    Count + length(Chunk) >= TotalCount
+->
+    lists:flatten(lists:reverse([Chunk | Chunks]));
+collect_objects(?SEARCH_RESULT(Chunk, _, Token), Count, Chunks, Getter) ->
+    collect_objects(Getter(Token), Count + length(Chunk), [Chunk | Chunks], Getter).

@@ -16,6 +16,8 @@
 %% Test cases
 -export([
     get_latest_version/1,
+    checkout_all/1,
+    checkout_objects_by_type/1,
     checkout_nonexistent_object/1,
     checkout_object_by_version/1,
     checkout_latest_object/1,
@@ -45,7 +47,9 @@ groups() ->
             get_latest_version,
             checkout_latest_object,
             version_sequence_operations,
-            get_latest_version
+            get_latest_version,
+            checkout_all,
+            checkout_objects_by_type
         ]},
         {parallel_operations, [parallel], [
             checkout_nonexistent_object,
@@ -103,6 +107,22 @@ checkout_object_by_version(_Config) ->
 -spec get_latest_version(config()) -> _.
 get_latest_version(_Config) ->
     ?assertMatch(Version when is_integer(Version), dmt_client:get_latest_version()).
+
+-spec checkout_all(config()) -> _.
+checkout_all(_Config) ->
+    ?assertMatch([_ | _], dmt_client:checkout_all(latest, #{})).
+
+-spec checkout_objects_by_type(config()) -> _.
+checkout_objects_by_type(_Config) ->
+    Ops = [
+        {insert, #domain_conf_v2_InsertOp{object = {'document_type', #domain_DocumentType{name = ~b"document type"}}}}
+     || _ <- lists:seq(1, 42)
+    ],
+    _ = dmt_client:commit(dmt_client:get_latest_version(), Ops, make_author_id()),
+    ?assertMatch(
+        VersionedObjects when length(VersionedObjects) >= 42,
+        dmt_client:checkout_objects_by_type(latest, 'document_type', #{})
+    ).
 
 -spec checkout_latest_object(config()) -> _.
 checkout_latest_object(_Config) ->
