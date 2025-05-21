@@ -21,9 +21,13 @@
     checkout_nonexistent_object/1,
     checkout_object_by_version/1,
     checkout_latest_object/1,
+    insert/1,
+    update/1,
+    upsert/1,
+    remove/1,
     commit_insert_object/1,
     commit_update_object/1,
-    %% commit_remove_object/1,
+    commit_remove_object/1,
     commit_multiple_operations/1,
     version_sequence_operations/1,
     commit_conflict_handling/1
@@ -48,6 +52,10 @@ groups() ->
             checkout_latest_object,
             version_sequence_operations,
             get_latest_version,
+            insert,
+            update,
+            upsert,
+            remove,
             checkout_all,
             checkout_objects_by_type
         ]},
@@ -56,7 +64,7 @@ groups() ->
             checkout_object_by_version,
             commit_insert_object,
             commit_update_object,
-            %% commit_remove_object,
+            commit_remove_object,
             commit_multiple_operations,
             commit_conflict_handling
         ]}
@@ -106,7 +114,62 @@ checkout_object_by_version(_Config) ->
 
 -spec get_latest_version(config()) -> _.
 get_latest_version(_Config) ->
-    ?assertMatch(Version when is_integer(Version), dmt_client:get_latest_version()).
+    ?assertMatch(Version when is_integer(Version) andalso Version > 0, dmt_client:get_latest_version()).
+
+-spec insert(config()) -> _.
+insert(_Config) ->
+    ?assertMatch(
+        Version when is_integer(Version) andalso Version > 0,
+        dmt_client:insert(latest, [make_object()], make_author_id(), #{})
+    ).
+
+make_object() ->
+    element(3, make_test_object(make_domain_ref())).
+
+-spec update(config()) -> _.
+update(_Config) ->
+    {Version0, _, [Object]} = setup_existing_for_update(1),
+    ?assertMatch(
+        Version1 when Version1 > Version0,
+        dmt_client:update(latest, [Object], make_author_id(), #{})
+    ).
+
+setup_existing_for_update(Count) ->
+    InsertedObjects = [make_object() || _ <- lists:seq(1, Count)],
+    Version = dmt_client:insert(latest, InsertedObjects, make_author_id(), #{}),
+    ModifiedObjects = lists:map(
+        fun({Type, {ObjectTag, Ref, _}}) ->
+            {Type, {ObjectTag, _, Data}} = make_object(),
+            %% Make object with changed data
+            {Type, {ObjectTag, Ref, Data}}
+        end,
+        InsertedObjects
+    ),
+    {Version, InsertedObjects, ModifiedObjects}.
+
+-spec upsert(config()) -> _.
+upsert(_Config) ->
+    {Version0, _, Objects0} = setup_existing_for_update(3),
+    Objects1 = lists_shuffle([make_object(), make_object() | Objects0]),
+    ?assertMatch(
+        Version1 when Version1 > Version0,
+        dmt_client:upsert(latest, Objects1, make_author_id(), #{})
+    ).
+
+lists_shuffle(L) ->
+    [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- L])].
+
+-spec remove(config()) -> _.
+remove(_Config) ->
+    {Version0, _, Objects} = setup_existing_for_update(3),
+    ?assertMatch(
+        Version1 when Version1 > Version0,
+        dmt_client:remove(latest, Objects, make_author_id(), #{})
+    ),
+    [
+        ?assertThrow(#domain_conf_v2_ObjectNotFound{}, dmt_client:checkout_object(dmt_client_object:get_ref(Object)))
+     || Object <- Objects
+    ].
 
 -spec checkout_all(config()) -> _.
 checkout_all(_Config) ->
@@ -163,20 +226,20 @@ commit_update_object(_Config) ->
     } = dmt_client:checkout_object(Ref),
     ?assertEqual(Object2, Result).
 
-%% -spec commit_remove_object(config()) -> _.
-%% commit_remove_object(_Config) ->
-%%     {Ref, ROObject, _} = make_test_object(make_domain_ref()),
-%%     #domain_conf_v2_CommitResponse{version = Version1} =
-%%         commit_insert(ROObject, Ref),
+-spec commit_remove_object(config()) -> _.
+commit_remove_object(_Config) ->
+    {Ref, ROObject, _} = make_test_object(make_domain_ref()),
+    #domain_conf_v2_CommitResponse{version = Version1} =
+        commit_insert(ROObject, Ref),
 
-%%     #domain_conf_v2_CommitResponse{version = Version2} =
-%%         commit_remove(Version1, Ref),
-%%     ?assert(Version2 > Version1),
+    #domain_conf_v2_CommitResponse{version = Version2} =
+        commit_remove(Version1, Ref),
+    ?assert(Version2 > Version1),
 
-%%     ?assertThrow(
-%%         #domain_conf_v2_ObjectNotFound{},
-%%         dmt_client:checkout_object(Ref, Version2)
-%%     ).
+    ?assertThrow(
+        #domain_conf_v2_ObjectNotFound{},
+        dmt_client:checkout_object(Ref, Version2)
+    ).
 
 -spec commit_multiple_operations(config()) -> _.
 commit_multiple_operations(_Config) ->
@@ -266,10 +329,7 @@ make_test_object({category, CategoryRef} = FullRef, Name) ->
     {FullRef, ReflessObject, Object}.
 
 make_author_id() ->
-    Params = #domain_conf_v2_AuthorParams{email = genlib:unique(), name = genlib:unique()},
-    #domain_conf_v2_Author{id = ID} =
-        dmt_client_author:create(Params, #{}),
-    ID.
+    dmt_client:create_author(genlib:unique(), genlib:unique()).
 
 commit_insert(Object, Ref) ->
     commit_insert(1, Object, Ref).
@@ -285,10 +345,10 @@ commit_update(Version, Object) ->
     AuthorID = make_author_id(),
     dmt_client:commit(Version, [Op], AuthorID).
 
-%% commit_remove(Version, Ref) ->
-%%     Op = {remove, #domain_conf_v2_RemoveOp{ref = Ref}},
-%%     AuthorID = make_author_id(),
-%%     dmt_client:commit(Version, [Op], AuthorID).
+commit_remove(Version, Ref) ->
+    Op = {remove, #domain_conf_v2_RemoveOp{ref = Ref}},
+    AuthorID = make_author_id(),
+    dmt_client:commit(Version, [Op], AuthorID).
 
 commit_batch_insert(Objects) ->
     Version = 1,

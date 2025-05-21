@@ -33,7 +33,8 @@ commit(Version, Operations, AuthorID, Opts) ->
 
 -spec checkout_object(dmt_client:object_ref(), dmt_client:vsn(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().
-checkout_object(ObjectReference, VersionRef, Opts) ->
+checkout_object(ObjectReference, Version, Opts) ->
+    VersionRef = {version, Version},
     call('RepositoryClient', 'CheckoutObject', {VersionRef, ObjectReference}, Opts).
 
 -spec get_latest_version(dmt_client:opts()) -> number() | no_return().
@@ -86,12 +87,7 @@ get_event_handlers() ->
 make_search_params(Pattern, Version, Limit, Type, Token) ->
     #domain_conf_v2_SearchRequestParams{
         query = Pattern,
-        version =
-            case Version of
-                {version, V} -> V;
-                %% Head
-                _ -> undefined
-            end,
+        version = Version,
         limit = Limit,
         type = Type,
         continuation_token = Token

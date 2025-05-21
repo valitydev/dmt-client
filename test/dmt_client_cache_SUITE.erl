@@ -99,9 +99,9 @@ cache_size_limits(_Config) ->
     #domain_conf_v2_VersionedObject{} =
         dmt_client:checkout_object(Ref3, GV3),
 
-    {error, object_not_found} = dmt_client_cache:do_get_object(Ref1, {version, GV1}),
-    {ok, _} = dmt_client_cache:do_get_object(Ref2, {version, GV2}),
-    {ok, _} = dmt_client_cache:do_get_object(Ref3, {version, GV3}).
+    {error, object_not_found} = dmt_client_cache:do_get_object(Ref1, GV1),
+    {ok, _} = dmt_client_cache:do_get_object(Ref2, GV2),
+    {ok, _} = dmt_client_cache:do_get_object(Ref3, GV3).
 
 -spec cache_memory_limits(config()) -> _.
 cache_memory_limits(_Config) ->
@@ -128,8 +128,8 @@ cache_memory_limits(_Config) ->
     ?assertEqual(Obj2, Cached2),
 
     % First object should be evicted due to memory limits
-    {error, object_not_found} = dmt_client_cache:do_get_object(Ref1, {version, Version1}),
-    {ok, _} = dmt_client_cache:do_get_object(Ref2, {version, Version2}).
+    {error, object_not_found} = dmt_client_cache:do_get_object(Ref1, Version1),
+    {ok, _} = dmt_client_cache:do_get_object(Ref2, Version2).
 
 -spec parallel_access(config()) -> _.
 parallel_access(_Config) ->
@@ -228,7 +228,7 @@ create_large_binary(Size) ->
 
 % insert_and_access(Object) ->
 %     Version = commit_insert(Object),
-%     VersionRef = {version, Version},
+%     VersionRef = Version,
 %     {Ref, _, _} = Object,
 %     % Access to cache it
 %     #domain_conf_v2_VersionedObject{} = dmt_client:checkout_object(VersionRef, Ref),

@@ -7,6 +7,7 @@
 -behaviour(application).
 
 %% API
+-export([checkout_all/1]).
 -export([checkout_all/2]).
 -export([checkout_object/1]).
 -export([checkout_object/2]).
@@ -15,12 +16,17 @@
 -export([commit/3]).
 -export([commit/4]).
 -export([get_latest_version/0]).
+-export([insert/4]).
+-export([update/4]).
+-export([remove/4]).
+-export([upsert/4]).
 
 % AuthorManagement API
 
--export([author_create/2]).
--export([author_get/1]).
--export([author_delete/1]).
+-export([create_author/2]).
+-export([create_author/3]).
+-export([get_author/1]).
+-export([delete_author/1]).
 
 %% Health check API
 -export([health_check/0]).
@@ -35,12 +41,13 @@
 -export_type([vsn/0]).
 -export_type([vsn_created_at/0]).
 -export_type([version/0]).
--export_type([base_version/0]).
+-export_type([ref/0]).
 -export_type([versioned_object/0]).
 -export_type([operation/0]).
 -export_type([commit_response/0]).
 -export_type([object_ref/0]).
 -export_type([domain_object/0]).
+-export_type([refless_domain_object/0]).
 -export_type([opts/0]).
 
 -export_type([author_id/0]).
@@ -55,13 +62,14 @@
 
 -include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
 
--type vsn() :: {version, non_neg_integer()} | {head, dmsl_domain_conf_v2_thrift:'Head'()}.
 -type vsn_created_at() :: dmsl_base_thrift:'Timestamp'().
--type version() :: base_version() | latest.
--type base_version() :: non_neg_integer().
+-type version() :: vsn() | latest.
+-type vsn() :: dmsl_domain_conf_v2_thrift:'Version'().
+-type ref() :: dmsl_domain_conf_v2_thrift:'VersionReference'().
 -type operation() :: dmsl_domain_conf_v2_thrift:'Operation'().
 -type object_ref() :: dmsl_domain_thrift:'Reference'().
 -type versioned_object() :: dmsl_domain_conf_v2_thrift:'VersionedObject'().
+-type refless_domain_object() :: dmsl_domain_thrift:'ReflessDomainObject'().
 -type domain_object() :: dmsl_domain_thrift:'DomainObject'().
 -type commit_response() :: dmsl_domain_conf_v2_thrift:'CommitResponse'().
 -type opts() :: #{
@@ -70,6 +78,8 @@
 }.
 
 -type author_id() :: dmsl_domain_conf_v2_thrift:'AuthorID'().
+-type author_name() :: dmsl_domain_conf_v2_thrift:'AuthorName'().
+-type author_email() :: dmsl_domain_conf_v2_thrift:'AuthorEmail'().
 -type author() :: dmsl_domain_conf_v2_thrift:'Author'().
 -type author_params() :: dmsl_domain_conf_v2_thrift:'AuthorParams'().
 
@@ -82,7 +92,9 @@
 
 %%% API
 
--define(CHUNK_SIZE, 5).
+-spec checkout_all(version()) -> [versioned_object()].
+checkout_all(Reference) ->
+    checkout_all(Reference, #{}).
 
 -spec checkout_all(version(), opts()) -> [versioned_object()].
 checkout_all(Reference, Opts) ->
@@ -104,6 +116,8 @@ checkout_object(ObjectReference, Reference, Opts) ->
 checkout_objects_by_type(Reference, Type, Opts) ->
     do_search(Reference, Type, Opts).
 
+-define(CHUNK_SIZE, 20).
+
 do_search(Reference, Type, Opts) ->
     Version = ref_to_version(Reference),
     VersionedObjects = search_and_collect_objects(Version, ~b"*", Type, ?CHUNK_SIZE, Opts),
@@ -114,30 +128,104 @@ do_checkout_object(ObjectReference, Reference, Opts) ->
     Version = ref_to_version(Reference),
     dmt_client_cache:get_object(ObjectReference, Version, Opts).
 
--spec commit(base_version(), [operation()], author_id()) -> commit_response() | no_return().
+-spec commit(version(), [operation()], author_id()) -> commit_response() | no_return().
 commit(Version, Operations, AuthorID) ->
     commit(Version, Operations, AuthorID, #{}).
 
--spec commit(base_version(), [operation()], author_id(), opts()) -> commit_response() | no_return().
-commit(Version, Operations, AuthorID, Opts) ->
+-spec commit(version(), [operation()], author_id(), opts()) -> commit_response() | no_return().
+commit(Reference, Operations, AuthorID, Opts) ->
+    Version = ref_to_version(Reference),
     dmt_client_backend:commit(Version, Operations, AuthorID, Opts).
 
--spec get_latest_version() -> number() | no_return().
+-spec get_latest_version() -> vsn() | no_return().
 get_latest_version() ->
     dmt_client_backend:get_latest_version(#{}).
 
-% AuthorManagement
+-spec insert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+insert(Reference, Objects, AuthorID, Opts) ->
+    Operations = [
+        {insert, #domain_conf_v2_InsertOp{
+            object = dmt_client_object:make_refless(Object),
+            force_ref = dmt_client_object:get_ref(Object)
+        }}
+     || Object <- Objects
+    ],
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
 
--spec author_create(author_params(), opts()) -> author().
-author_create(Params, Opts) ->
-    dmt_client_author:create(Params, Opts).
+-spec update(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+update(Reference, NewObjects, AuthorID, Opts) ->
+    Operations = [
+        {update, #domain_conf_v2_UpdateOp{object = NewObject}}
+     || NewObject <- NewObjects
+    ],
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
 
--spec author_get(author_id()) -> author().
-author_get(ID) ->
+-spec upsert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+upsert(Reference, NewObjects, AuthorID, Opts) ->
+    Operations = lists:foldl(
+        fun(NewObject, Ops) ->
+            ObjectRef = dmt_client_object:get_ref(NewObject),
+            case do_checkout_object(ObjectRef, Reference, Opts) of
+                {error, version_not_found = Reason} ->
+                    erlang:error(Reason);
+                {ok, #domain_conf_v2_VersionedObject{object = NewObject}} ->
+                    Ops;
+                {ok, #domain_conf_v2_VersionedObject{object = _OldObject}} ->
+                    [
+                        {update, #domain_conf_v2_UpdateOp{object = NewObject}}
+                        | Ops
+                    ];
+                {error, object_not_found} ->
+                    [
+                        {insert, #domain_conf_v2_InsertOp{
+                            object = dmt_client_object:make_refless(NewObject),
+                            force_ref = ObjectRef
+                        }}
+                        | Ops
+                    ]
+            end
+        end,
+        [],
+        NewObjects
+    ),
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
+
+-spec remove(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+remove(Reference, Objects, AuthorID, Opts) ->
+    Operations = [
+        {remove, #domain_conf_v2_RemoveOp{ref = dmt_client_object:get_ref(Object)}}
+     || Object <- Objects
+    ],
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
+
+%% AuthorManagement
+
+-spec create_author(author_name(), author_email()) -> dmt_client_author:author_id() | no_return().
+create_author(Name, Email) ->
+    create_author(Name, Email, #{}).
+
+-spec create_author(author_name(), author_email(), dmt_client_author:opts()) ->
+    dmt_client_author:author_id() | no_return().
+create_author(Name, Email, Opts) ->
+    Params = #domain_conf_v2_AuthorParams{email = Email, name = Name},
+    #domain_conf_v2_Author{id = ID} =
+        dmt_client_author:create(Params, Opts),
+    ID.
+
+-spec get_author(author_id()) -> author().
+get_author(ID) ->
     dmt_client_author:get(ID).
 
--spec author_delete(author_id()) -> ok.
-author_delete(ID) ->
+-spec delete_author(author_id()) -> ok.
+delete_author(ID) ->
     dmt_client_author:delete(ID).
 
 %% Health check API
@@ -188,11 +276,10 @@ unwrap({error, {woody_error, _} = Error}) -> erlang:error(Error);
 unwrap({error, version_not_found = Reason}) -> erlang:error(Reason);
 unwrap({error, object_not_found}) -> erlang:throw(#domain_conf_v2_ObjectNotFound{}).
 
--spec ref_to_version(version()) -> vsn().
 ref_to_version(Version) when is_integer(Version) ->
-    {version, Version};
+    Version;
 ref_to_version(latest) ->
-    {head, #domain_conf_v2_Head{}}.
+    get_latest_version().
 
 search_and_collect_objects(Version, Pattern, Type, Limit, Opts) ->
     Getter = fun(Token) ->

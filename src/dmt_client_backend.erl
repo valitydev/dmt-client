@@ -40,7 +40,7 @@ search(Version, Pattern, Type, Limit, Token, Opts) ->
     call(search, [Version, Pattern, Type, Limit, Token, Opts]).
 
 -spec commit(
-    dmt_client:base_version(),
+    dmt_client:vsn(),
     [dmt_client:operation()],
     dmt_client:author_id(),
     dmt_client:opts()
@@ -50,8 +50,8 @@ commit(Version, Operations, AuthorID, Opts) ->
 
 -spec checkout_object(dmt_client:object_ref(), dmt_client:vsn(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().
-checkout_object(ObjectReference, VersionReference, Opts) ->
-    call(checkout_object, [ObjectReference, VersionReference, Opts]).
+checkout_object(ObjectReference, Version, Opts) ->
+    call(checkout_object, [ObjectReference, Version, Opts]).
 
 -spec get_latest_version(dmt_client:opts()) -> number() | no_return().
 get_latest_version(Opts) ->

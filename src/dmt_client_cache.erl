@@ -60,7 +60,7 @@
 
 -type from() :: {pid(), term()}.
 -type fetch_result() ::
-    {ok, {dmt_client:base_version(), dmt_client:object_ref()}}
+    {ok, {dmt_client:vsn(), dmt_client:object_ref()}}
     | {error, version_not_found | woody_error() | {already_fetched, dmt_client:vsn()}}.
 
 -type dispatch_fun() :: fun((from(), fetch_result()) -> any()).
@@ -175,8 +175,6 @@ call(Msg, Timeout) ->
 cast(Msg) ->
     gen_server:cast(?SERVER, Msg).
 
-ensure_object_version(ObjectRef, #domain_conf_v2_Head{}, Opts) ->
-    call({fetch_object_version, ObjectRef, #domain_conf_v2_Head{}, Opts});
 ensure_object_version(ObjectRef, Version, Opts) ->
     case is_cached(Version, ObjectRef) of
         true ->
@@ -196,12 +194,6 @@ do_get_object(ObjectRef, Version) ->
             {error, object_not_found}
     end.
 
--spec put_object_into_table(
-    dmt_client:object_ref(),
-    dmt_client:vsn(),
-    dmt_client:versioned_object(),
-    dmt_client:vsn_created_at()
-) -> boolean().
 put_object_into_table(Ref, Version, Object, CreatedAt) ->
     true = ets:insert(?TABLE, #object{
         id = {Ref, Version},
@@ -213,7 +205,7 @@ put_object_into_table(Ref, Version, Object, CreatedAt) ->
     }).
 
 -spec update_with_objects(dmt_client:vsn(), [dmt_client:versioned_object()]) -> ok.
-update_with_objects(VersionReference, VersionedObjects) ->
+update_with_objects(Version, VersionedObjects) ->
     lists:foreach(
         fun(
             #domain_conf_v2_VersionedObject{
@@ -221,11 +213,11 @@ update_with_objects(VersionReference, VersionedObjects) ->
                 object = Object
             } = VersionedObject
         ) ->
-            ObjectReference = dmt_client_object:get_object_ref(Object),
-            case is_cached(VersionReference, ObjectReference) of
+            ObjectReference = dmt_client_object:get_ref(Object),
+            case is_cached(Version, ObjectReference) of
                 %% NOTE No need to update entry, since versioned objects are immutable
                 true -> ok;
-                false -> put_object_into_table(ObjectReference, VersionReference, VersionedObject, ChangedAt)
+                false -> put_object_into_table(ObjectReference, Version, VersionedObject, ChangedAt)
             end
         end,
         VersionedObjects
@@ -236,58 +228,61 @@ update_with_objects(VersionReference, VersionedObjects) ->
 get_all_objects() ->
     ets:tab2list(?TABLE).
 
-fetch_by_reference(ObjectRef, VersionReference, From, Opts, #state{waiters = Waiters} = State) ->
+fetch_by_reference(ObjectRef, Version, From, Opts, #state{waiters = Waiters} = State) ->
     DispatchFun = fun dispatch_reply/2,
-    NewWaiters = maybe_fetch(ObjectRef, VersionReference, From, DispatchFun, Waiters, Opts),
+    NewWaiters = maybe_fetch(ObjectRef, Version, From, DispatchFun, Waiters, Opts),
     State#state{waiters = NewWaiters}.
 
-maybe_fetch(ObjectRef, VersionReference, ReplyTo, DispatchFun, Waiters, Opts) ->
+maybe_fetch(ObjectRef, Version, ReplyTo, DispatchFun, Waiters, Opts) ->
     % First check if we already have waiters for this request
-    WaiterKey = {ObjectRef, VersionReference},
+    WaiterKey = {ObjectRef, Version},
     case maps:find(WaiterKey, Waiters) of
         {ok, List} ->
             % Request already in progress, just add to waiters
             Waiters#{WaiterKey => [{ReplyTo, DispatchFun} | List]};
         error ->
             % Double check the cache before scheduling a fetch
-            case is_cached(VersionReference, ObjectRef) of
+            case is_cached(Version, ObjectRef) of
                 true ->
                     % Object appeared in cache while we were processing
                     Waiters;
                 false ->
                     % Schedule new fetch and create waiters list
-                    _Pid = schedule_fetch(ObjectRef, VersionReference, Opts),
+                    _Pid = schedule_fetch(ObjectRef, Version, Opts),
                     Waiters#{WaiterKey => [{ReplyTo, DispatchFun}]}
             end
     end.
 
-is_cached(VersionReference, ObjectReference) ->
-    ets:member(?TABLE, {ObjectReference, VersionReference}).
+is_cached(Version, ObjectReference) ->
+    ets:member(?TABLE, {ObjectReference, Version}).
 
-schedule_fetch(ObjectRef, VersionReference, Opts) ->
+schedule_fetch(ObjectRef, Version, Opts) ->
     spawn_link(
         fun() ->
             Result =
-                case fetch(ObjectRef, VersionReference, Opts) of
+                case fetch(ObjectRef, Version, Opts) of
                     #domain_conf_v2_VersionedObject{info = ObjectInfo} = Object ->
-                        #domain_conf_v2_VersionedObjectInfo{version = Version0, changed_at = ChangedAt} = ObjectInfo,
-                        Version1 = {version, Version0},
-                        put_object_into_table(ObjectRef, Version1, Object, ChangedAt),
+                        #domain_conf_v2_VersionedObjectInfo{version = _ActualVersion, changed_at = ChangedAt} =
+                            ObjectInfo,
+                        %% NOTE We cache object for requested version
+                        %% number, not the actual object's change
+                        %% version.
+                        put_object_into_table(ObjectRef, Version, Object, ChangedAt),
                         %% This will be called every time some new object is required.
                         %% Maybe consider alternative
                         cast(cleanup),
-                        {ok, {ObjectRef, Version1}};
+                        {ok, {ObjectRef, Version}};
                     {error, _} = Error ->
                         Error
                 end,
 
-            cast({dispatch, {ObjectRef, VersionReference}, Result})
+            cast({dispatch, {ObjectRef, Version}, Result})
         end
     ).
 
-fetch(ObjectRef, VersionReference, Opts) ->
+fetch(ObjectRef, Version, Opts) ->
     try
-        dmt_client_backend:checkout_object(ObjectRef, VersionReference, Opts)
+        dmt_client_backend:checkout_object(ObjectRef, Version, Opts)
     catch
         throw:#domain_conf_v2_VersionNotFound{} ->
             {error, version_not_found};
@@ -418,7 +413,7 @@ test_cleanup(Pid) ->
 %%
 
 test_basic_caching() ->
-    Version = {version, 1},
+    Version = 1,
     meck:new(dmt_client_backend, [passthrough]),
     meck:expect(
         dmt_client_backend,
@@ -446,20 +441,20 @@ test_size_limits() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(_ObjRef, {version, Ver}, _Opts) ->
+        fun(_ObjRef, Ver, _Opts) ->
             ?TEST_VERSIONED_OBJ(Ver)
         end
     ),
 
     % Add three objects to trigger cleanup
-    [dmt_client_cache:get_object(?TEST_REF, {version, Ver}, #{}) || Ver <- lists:seq(1, 3)],
+    [dmt_client_cache:get_object(?TEST_REF, Ver, #{}) || Ver <- lists:seq(1, 3)],
 
     % Verify only newest objects remain
     Objects = ets:tab2list(?TABLE),
     ?assertEqual(2, length(Objects)),
 
     % Verify the oldest version was evicted
-    Result = do_get_object(?TEST_REF, {version, 1}),
+    Result = do_get_object(?TEST_REF, 1),
     ?assertEqual({error, object_not_found}, Result).
 
 test_last_access() ->
@@ -467,14 +462,14 @@ test_last_access() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(_ObjRef, {version, Ver}, _Opts) ->
+        fun(_ObjRef, Ver, _Opts) ->
             ?TEST_VERSIONED_OBJ(Ver)
         end
     ),
 
     % Access objects in specific order
-    Version1 = {version, 1},
-    Version2 = {version, 2},
+    Version1 = 1,
+    Version2 = 2,
 
     {ok, _} = dmt_client_cache:get_object(?TEST_REF, Version1, #{}),
     timer:sleep(100),
@@ -500,7 +495,7 @@ test_missing_object() ->
         end
     ),
 
-    Result = dmt_client_cache:get_object(?TEST_REF, {version, 1}, #{}),
+    Result = dmt_client_cache:get_object(?TEST_REF, 1, #{}),
     ?assertEqual({error, object_not_found}, Result).
 
 test_concurrent_access() ->
@@ -515,7 +510,7 @@ test_concurrent_access() ->
         end
     ),
 
-    Version = {version, 1},
+    Version = 1,
     % Start multiple concurrent requests
     Self = self(),
     Pids = [
