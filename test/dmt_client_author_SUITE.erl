@@ -3,7 +3,6 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
--include_lib("damsel/include/dmsl_domain_thrift.hrl").
 
 %% Common test callbacks
 -export([all/0, groups/0, init_per_suite/1, end_per_suite/1]).
@@ -11,6 +10,7 @@
 -export([
     create_author/1,
     get_author/1,
+    get_author_by_email/1,
     delete_author/1,
     get_nonexistent_author/1,
     delete_nonexistent_author/1,
@@ -28,7 +28,12 @@ all() ->
 -spec groups() -> [{atom(), list(), [atom()]}].
 groups() ->
     [
-        {basic_operations, [], [create_author, get_author, delete_author]},
+        {basic_operations, [], [
+            create_author,
+            get_author,
+            get_author_by_email,
+            delete_author
+        ]},
         {error_cases, [parallel], [
             get_nonexistent_author, delete_nonexistent_author, create_duplicate_email
         ]}
@@ -68,7 +73,7 @@ create_author(_Config) ->
 
 -spec get_author(config()) -> _.
 get_author(_Config) ->
-    % Create user op first
+    % Create author first
     Params = #domain_conf_v2_AuthorParams{email = generate_email(), name = generate_name()},
     #domain_conf_v2_Author{id = ID} = dmt_client_author:create(Params, #{}),
 
@@ -80,9 +85,23 @@ get_author(_Config) ->
     ),
     ?assertEqual(Params#domain_conf_v2_AuthorParams.name, Author#domain_conf_v2_Author.name).
 
+-spec get_author_by_email(config()) -> _.
+get_author_by_email(_Config) ->
+    Email = generate_email(),
+    Params = #domain_conf_v2_AuthorParams{email = Email, name = generate_name()},
+    #domain_conf_v2_Author{id = ID} = dmt_client_author:create(Params, #{}),
+
+    % Get and verify
+    Author = dmt_client_author:get_by_email(Email),
+    ?assertEqual(
+        Params#domain_conf_v2_AuthorParams.email,
+        Author#domain_conf_v2_Author.email
+    ),
+    ?assertEqual(Params#domain_conf_v2_AuthorParams.name, Author#domain_conf_v2_Author.name).
+
 -spec delete_author(config()) -> _.
 delete_author(_Config) ->
-    % Create user op
+    % Create author
     Params = #domain_conf_v2_AuthorParams{email = generate_email(), name = generate_name()},
     #domain_conf_v2_Author{id = ID} = dmt_client_author:create(Params, #{}),
 
@@ -112,7 +131,7 @@ create_duplicate_email(_Config) ->
     Params1 = #domain_conf_v2_AuthorParams{email = Email, name = generate_name()},
     _Author1 = dmt_client_author:create(Params1, #{}),
 
-    % Try to create another user op with same email
+    % Try to create another author with same email
     Params2 = #domain_conf_v2_AuthorParams{email = Email, name = generate_name()},
     ?assertThrow(
         #domain_conf_v2_AuthorAlreadyExists{},

@@ -1,11 +1,10 @@
 -module(dmt_client_author).
 
--include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
-
 %% API
 -export([
     create/2,
     get/1,
+    get_by_email/1,
     delete/1
 ]).
 
@@ -17,6 +16,7 @@
 -type author() :: dmt_client:author().
 -type author_params() :: dmt_client:author_params().
 -type author_id() :: dmt_client:author_id().
+-type author_email() :: dmt_client:author_email().
 -type opts() :: dmt_client:opts().
 
 -spec create(author_params(), opts()) -> author() | no_return().
@@ -30,6 +30,14 @@ get(ID) ->
 -spec get(author_id(), opts()) -> author() | no_return().
 get(ID, Opts) ->
     call('AuthorManagement', 'Get', {ID}, Opts).
+
+-spec get_by_email(author_email()) -> author() | no_return().
+get_by_email(Email) ->
+    get_by_email(Email, #{}).
+
+-spec get_by_email(author_email(), opts()) -> author() | no_return().
+get_by_email(Email, Opts) ->
+    call('AuthorManagement', 'GetByEmail', {Email}, Opts).
 
 -spec delete(author_id()) -> ok | no_return().
 delete(ID) ->

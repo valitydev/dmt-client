@@ -26,6 +26,7 @@
 -export([create_author/2]).
 -export([create_author/3]).
 -export([get_author/1]).
+-export([get_author_by_email/1]).
 -export([delete_author/1]).
 
 %% Health check API
@@ -223,6 +224,10 @@ create_author(Name, Email, Opts) ->
 -spec get_author(author_id()) -> author().
 get_author(ID) ->
     dmt_client_author:get(ID).
+
+-spec get_author_by_email(author_email()) -> author().
+get_author_by_email(Email) ->
+    dmt_client_author:get_by_email(Email).
 
 -spec delete_author(author_id()) -> ok.
 delete_author(ID) ->
