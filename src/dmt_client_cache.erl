@@ -261,6 +261,8 @@ schedule_fetch(ObjectRef, Version, Opts) ->
         fun() ->
             Result =
                 case fetch(ObjectRef, Version, Opts) of
+                    {error, _} = Error ->
+                        Error;
                     Object ->
                         %% NOTE We cache object for requested version
                         %% number, not the actual object's change
@@ -269,9 +271,7 @@ schedule_fetch(ObjectRef, Version, Opts) ->
                         %% This will be called every time some new object is required.
                         %% Maybe consider alternative
                         cast(cleanup),
-                        {ok, {ObjectRef, Version}};
-                    {error, _} = Error ->
-                        Error
+                        {ok, {ObjectRef, Version}}
                 end,
 
             cast({dispatch, {ObjectRef, Version}, Result})
