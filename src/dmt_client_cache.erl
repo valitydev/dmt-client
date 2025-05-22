@@ -194,30 +194,30 @@ do_get_object(ObjectRef, Version) ->
             {error, object_not_found}
     end.
 
-put_object_into_table(Ref, Version, Object, CreatedAt) ->
+put_object_into_table(
+    ObjectRef,
+    RequestedVersion,
+    #domain_conf_v2_VersionedObject{info = #domain_conf_v2_VersionedObjectInfo{changed_at = ChangedAt}} =
+        VersionedObject
+) ->
     true = ets:insert(?TABLE, #object{
-        id = {Ref, Version},
-        ref = Ref,
-        vsn = Version,
-        obj = Object,
-        created_at = CreatedAt,
+        id = {ObjectRef, RequestedVersion},
+        ref = ObjectRef,
+        vsn = RequestedVersion,
+        obj = VersionedObject,
+        created_at = ChangedAt,
         last_access = timestamp()
     }).
 
 -spec update_with_objects(dmt_client:vsn(), [dmt_client:versioned_object()]) -> ok.
 update_with_objects(Version, VersionedObjects) ->
     lists:foreach(
-        fun(
-            #domain_conf_v2_VersionedObject{
-                info = #domain_conf_v2_VersionedObjectInfo{changed_at = ChangedAt},
-                object = Object
-            } = VersionedObject
-        ) ->
-            ObjectReference = dmt_client_object:get_ref(Object),
+        fun(VersionedObject) ->
+            ObjectReference = dmt_client_object:get_ref(VersionedObject#domain_conf_v2_VersionedObject.object),
             case is_cached(Version, ObjectReference) of
                 %% NOTE No need to update entry, since versioned objects are immutable
                 true -> ok;
-                false -> put_object_into_table(ObjectReference, Version, VersionedObject, ChangedAt)
+                false -> put_object_into_table(ObjectReference, Version, VersionedObject)
             end
         end,
         VersionedObjects
@@ -261,13 +261,11 @@ schedule_fetch(ObjectRef, Version, Opts) ->
         fun() ->
             Result =
                 case fetch(ObjectRef, Version, Opts) of
-                    #domain_conf_v2_VersionedObject{info = ObjectInfo} = Object ->
-                        #domain_conf_v2_VersionedObjectInfo{version = _ActualVersion, changed_at = ChangedAt} =
-                            ObjectInfo,
+                    Object ->
                         %% NOTE We cache object for requested version
                         %% number, not the actual object's change
                         %% version.
-                        put_object_into_table(ObjectRef, Version, Object, ChangedAt),
+                        put_object_into_table(ObjectRef, Version, Object),
                         %% This will be called every time some new object is required.
                         %% Maybe consider alternative
                         cast(cleanup),
