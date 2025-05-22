@@ -23,7 +23,7 @@
     dmt_client:opts()
 ) -> dmt_client:commit_response() | no_return().
 
--callback checkout_object(dmt_client:object_ref(), dmt_client:vsn(), dmt_client:opts()) ->
+-callback checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().
 
 %%% API
@@ -48,10 +48,10 @@ search(Version, Pattern, Type, Limit, Token, Opts) ->
 commit(Version, Operations, AuthorID, Opts) ->
     call(commit, [Version, Operations, AuthorID, Opts]).
 
--spec checkout_object(dmt_client:object_ref(), dmt_client:vsn(), dmt_client:opts()) ->
+-spec checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().
-checkout_object(ObjectReference, Version, Opts) ->
-    call(checkout_object, [ObjectReference, Version, Opts]).
+checkout_object(Version, ObjectReference, Opts) ->
+    call(checkout_object, [Version, ObjectReference, Opts]).
 
 -spec get_latest_version(dmt_client:opts()) -> number() | no_return().
 get_latest_version(Opts) ->

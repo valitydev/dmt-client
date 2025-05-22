@@ -31,9 +31,9 @@ search(Version, Pattern, Type, Limit, Token, Opts) ->
 commit(Version, Operations, AuthorID, Opts) ->
     call('Repository', 'Commit', {Version, Operations, AuthorID}, Opts).
 
--spec checkout_object(dmt_client:object_ref(), dmt_client:vsn(), dmt_client:opts()) ->
+-spec checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().
-checkout_object(ObjectReference, Version, Opts) ->
+checkout_object(Version, ObjectReference, Opts) ->
     VersionRef = {version, Version},
     call('RepositoryClient', 'CheckoutObject', {VersionRef, ObjectReference}, Opts).
 

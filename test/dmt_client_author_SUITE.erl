@@ -93,10 +93,8 @@ get_author_by_email(_Config) ->
 
     % Get and verify
     Author = dmt_client_author:get_by_email(Email),
-    ?assertEqual(
-        Params#domain_conf_v2_AuthorParams.email,
-        Author#domain_conf_v2_Author.email
-    ),
+    ?assertEqual(Email, Author#domain_conf_v2_Author.email),
+    ?assertEqual(ID, Author#domain_conf_v2_Author.id),
     ?assertEqual(Params#domain_conf_v2_AuthorParams.name, Author#domain_conf_v2_Author.name).
 
 -spec delete_author(config()) -> _.

@@ -5,12 +5,11 @@
 %% API
 
 -export([start_link/0]).
-
 -export([get_object/3]).
--export([do_get_object/2]).
 
 %% Internal API
 
+-export([do_get_object/2]).
 -export([update_with_objects/2]).
 
 %% gen_server callbacks
@@ -280,7 +279,7 @@ schedule_fetch(ObjectRef, Version, Opts) ->
 
 fetch(ObjectRef, Version, Opts) ->
     try
-        dmt_client_backend:checkout_object(ObjectRef, Version, Opts)
+        dmt_client_backend:checkout_object(Version, ObjectRef, Opts)
     catch
         throw:#domain_conf_v2_VersionNotFound{} ->
             {error, version_not_found};
@@ -416,7 +415,7 @@ test_basic_caching() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(ObjRef, VersionRef, _Opts) ->
+        fun(VersionRef, ObjRef, _Opts) ->
             ?assertEqual(Version, VersionRef),
             ?assertEqual(?TEST_REF, ObjRef),
             ?TEST_VERSIONED_OBJ(1)
@@ -439,7 +438,7 @@ test_size_limits() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(_ObjRef, Ver, _Opts) ->
+        fun(Ver, _ObjRef, _Opts) ->
             ?TEST_VERSIONED_OBJ(Ver)
         end
     ),
@@ -460,7 +459,7 @@ test_last_access() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(_ObjRef, Ver, _Opts) ->
+        fun(Ver, _ObjRef, _Opts) ->
             ?TEST_VERSIONED_OBJ(Ver)
         end
     ),
@@ -488,7 +487,7 @@ test_missing_object() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(_ObjRef, _VersionRef, _Opts) ->
+        fun(_VersionRef, _ObjRef, _Opts) ->
             throw(#domain_conf_v2_ObjectNotFound{})
         end
     ),
@@ -501,7 +500,7 @@ test_concurrent_access() ->
     meck:expect(
         dmt_client_backend,
         checkout_object,
-        fun(_ObjRef, _VersionRef, _Opts) ->
+        fun(_VersionRef, _ObjRef, _Opts) ->
             % Simulate slow backend
             timer:sleep(100),
             ?TEST_VERSIONED_OBJ(1)

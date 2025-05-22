@@ -12,14 +12,23 @@
 -export([checkout_object/1]).
 -export([checkout_object/2]).
 -export([checkout_object/3]).
+-export([checkout_objects_by_type/2]).
 -export([checkout_objects_by_type/3]).
 -export([commit/3]).
 -export([commit/4]).
 -export([get_latest_version/0]).
+-export([insert/2]).
+-export([insert/3]).
 -export([insert/4]).
+-export([update/2]).
+-export([update/3]).
 -export([update/4]).
--export([remove/4]).
+-export([upsert/2]).
+-export([upsert/3]).
 -export([upsert/4]).
+-export([remove/2]).
+-export([remove/3]).
+-export([remove/4]).
 
 % AuthorManagement API
 
@@ -52,6 +61,7 @@
 -export_type([opts/0]).
 
 -export_type([author_id/0]).
+-export_type([author_email/0]).
 -export_type([author/0]).
 -export_type([author_params/0]).
 
@@ -103,15 +113,19 @@ checkout_all(Reference, Opts) ->
 
 -spec checkout_object(object_ref()) -> versioned_object() | no_return().
 checkout_object(ObjectReference) ->
-    checkout_object(ObjectReference, latest).
+    checkout_object(latest, ObjectReference).
 
--spec checkout_object(object_ref(), version()) -> versioned_object() | no_return().
-checkout_object(ObjectReference, Reference) ->
-    checkout_object(ObjectReference, Reference, #{}).
+-spec checkout_object(version(), object_ref()) -> versioned_object() | no_return().
+checkout_object(Reference, ObjectReference) ->
+    checkout_object(Reference, ObjectReference, #{}).
 
--spec checkout_object(object_ref(), version(), opts()) -> versioned_object() | no_return().
-checkout_object(ObjectReference, Reference, Opts) ->
-    unwrap(do_checkout_object(ObjectReference, Reference, Opts)).
+-spec checkout_object(version(), object_ref(), opts()) -> versioned_object() | no_return().
+checkout_object(Reference, ObjectReference, Opts) ->
+    unwrap(do_checkout_object(Reference, ObjectReference, Opts)).
+
+-spec checkout_objects_by_type(object_type(), opts()) -> [versioned_object()] | no_return().
+checkout_objects_by_type(Type, Opts) ->
+    checkout_objects_by_type(latest, Type, Opts).
 
 -spec checkout_objects_by_type(version(), object_type(), opts()) -> [versioned_object()] | no_return().
 checkout_objects_by_type(Reference, Type, Opts) ->
@@ -125,7 +139,7 @@ do_search(Reference, Type, Opts) ->
     ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
     VersionedObjects.
 
-do_checkout_object(ObjectReference, Reference, Opts) ->
+do_checkout_object(Reference, ObjectReference, Opts) ->
     Version = ref_to_version(Reference),
     dmt_client_cache:get_object(ObjectReference, Version, Opts).
 
@@ -142,6 +156,16 @@ commit(Reference, Operations, AuthorID, Opts) ->
 get_latest_version() ->
     dmt_client_backend:get_latest_version(#{}).
 
+-spec insert(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+insert(Objects, AuthorID) ->
+    insert(latest, Objects, AuthorID).
+
+-spec insert(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+insert(Reference, Object, AuthorID) when not is_list(Object) ->
+    insert(Reference, [Object], AuthorID);
+insert(Reference, Objects, AuthorID) ->
+    insert(Reference, Objects, AuthorID, #{}).
+
 -spec insert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
 insert(Reference, Objects, AuthorID, Opts) ->
     Operations = [
@@ -155,6 +179,16 @@ insert(Reference, Objects, AuthorID, Opts) ->
     %% TODO Update local cache after successful commit
     NewVersion.
 
+-spec update(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+update(Objects, AuthorID) ->
+    update(latest, Objects, AuthorID).
+
+-spec update(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+update(Reference, Object, AuthorID) when not is_list(Object) ->
+    update(Reference, [Object], AuthorID);
+update(Reference, Objects, AuthorID) ->
+    update(Reference, Objects, AuthorID, #{}).
+
 -spec update(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
 update(Reference, NewObjects, AuthorID, Opts) ->
     Operations = [
@@ -165,12 +199,22 @@ update(Reference, NewObjects, AuthorID, Opts) ->
     %% TODO Update local cache after successful commit
     NewVersion.
 
+-spec upsert(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+upsert(Objects, AuthorID) ->
+    upsert(latest, Objects, AuthorID).
+
+-spec upsert(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+upsert(Reference, Object, AuthorID) when not is_list(Object) ->
+    upsert(Reference, [Object], AuthorID);
+upsert(Reference, Objects, AuthorID) ->
+    upsert(Reference, Objects, AuthorID, #{}).
+
 -spec upsert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
 upsert(Reference, NewObjects, AuthorID, Opts) ->
     Operations = lists:foldl(
         fun(NewObject, Ops) ->
             ObjectRef = dmt_client_object:get_ref(NewObject),
-            case do_checkout_object(ObjectRef, Reference, Opts) of
+            case do_checkout_object(Reference, ObjectRef, Opts) of
                 {error, version_not_found = Reason} ->
                     erlang:error(Reason);
                 {ok, #domain_conf_v2_VersionedObject{object = NewObject}} ->
@@ -196,6 +240,16 @@ upsert(Reference, NewObjects, AuthorID, Opts) ->
     #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
     %% TODO Update local cache after successful commit
     NewVersion.
+
+-spec remove(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+remove(Objects, AuthorID) ->
+    remove(latest, Objects, AuthorID).
+
+-spec remove(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+remove(Reference, Object, AuthorID) when not is_list(Object) ->
+    remove(Reference, [Object], AuthorID);
+remove(Reference, Objects, AuthorID) ->
+    remove(Reference, Objects, AuthorID, #{}).
 
 -spec remove(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
 remove(Reference, Objects, AuthorID, Opts) ->

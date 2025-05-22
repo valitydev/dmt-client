@@ -109,7 +109,7 @@ checkout_object_by_version(_Config) ->
     % Check we can get object by specific version
     #domain_conf_v2_VersionedObject{
         object = Result
-    } = dmt_client:checkout_object(Ref, Version),
+    } = dmt_client:checkout_object(Version, Ref),
     ?assertEqual(Object, Result).
 
 -spec get_latest_version(config()) -> _.
@@ -195,7 +195,7 @@ checkout_latest_object(_Config) ->
     % Check we can get latest version
     #domain_conf_v2_VersionedObject{
         object = Result
-    } = dmt_client:checkout_object(Ref, latest),
+    } = dmt_client:checkout_object(latest, Ref),
     ?assertEqual(Object, Result).
 
 -spec commit_insert_object(config) -> _.
@@ -238,7 +238,7 @@ commit_remove_object(_Config) ->
 
     ?assertThrow(
         #domain_conf_v2_ObjectNotFound{},
-        dmt_client:checkout_object(Ref, Version2)
+        dmt_client:checkout_object(Version2, Ref)
     ).
 
 -spec commit_multiple_operations(config()) -> _.
@@ -284,7 +284,7 @@ version_sequence_operations(_Config) ->
     #domain_conf_v2_CommitResponse{version = Version1} =
         commit_insert(RLObject, Ref),
     #domain_conf_v2_VersionedObject{object = Result1} =
-        dmt_client:checkout_object(Ref, latest),
+        dmt_client:checkout_object(latest, Ref),
     {category, #domain_CategoryObject{data = Data1}} = Result1,
     ?assertEqual(Object1, Result1),
 
@@ -301,13 +301,13 @@ version_sequence_operations(_Config) ->
     ?assert(Version2 > Version1),
 
     #domain_conf_v2_VersionedObject{object = Result2} =
-        dmt_client:checkout_object(Ref, latest),
+        dmt_client:checkout_object(latest, Ref),
     ?assertEqual(Object2, Result2),
 
     % Verify we can still get old version
 
     #domain_conf_v2_VersionedObject{object = Historical} =
-        dmt_client:checkout_object(Ref, Version1),
+        dmt_client:checkout_object(Version1, Ref),
     ?assertEqual(Object1, Historical).
 
 %% Internal functions

@@ -93,11 +93,11 @@ cache_size_limits(_Config) ->
 
     % Access all objects to ensure they're cached
     #domain_conf_v2_VersionedObject{} =
-        dmt_client:checkout_object(Ref1, GV1),
+        dmt_client:checkout_object(GV1, Ref1),
     #domain_conf_v2_VersionedObject{} =
-        dmt_client:checkout_object(Ref2, GV2),
+        dmt_client:checkout_object(GV2, Ref2),
     #domain_conf_v2_VersionedObject{} =
-        dmt_client:checkout_object(Ref3, GV3),
+        dmt_client:checkout_object(GV3, Ref3),
 
     {error, object_not_found} = dmt_client_cache:do_get_object(Ref1, GV1),
     {ok, _} = dmt_client_cache:do_get_object(Ref2, GV2),
@@ -120,11 +120,11 @@ cache_memory_limits(_Config) ->
 
     % Access to ensure caching
     #domain_conf_v2_VersionedObject{object = Cached1} =
-        dmt_client:checkout_object(Ref1, Version1),
+        dmt_client:checkout_object(Version1, Ref1),
     ?assertEqual(Obj1, Cached1),
 
     #domain_conf_v2_VersionedObject{object = Cached2} =
-        dmt_client:checkout_object(Ref2, Version2),
+        dmt_client:checkout_object(Version2, Ref2),
     ?assertEqual(Obj2, Cached2),
 
     % First object should be evicted due to memory limits
@@ -142,7 +142,7 @@ parallel_access(_Config) ->
     Pids = [
         spawn_link(fun() ->
             #domain_conf_v2_VersionedObject{object = Result} =
-                dmt_client:checkout_object(Ref, Version),
+                dmt_client:checkout_object(Version, Ref),
             Self ! {self(), Result}
         end)
      || _ <- lists:seq(1, 100)
@@ -167,7 +167,7 @@ cache_invalidation(_Config) ->
 
     % Access object to ensure it's cached
     #domain_conf_v2_VersionedObject{object = Result1} =
-        dmt_client:checkout_object(Ref, Version1),
+        dmt_client:checkout_object(Version1, Ref),
     ?assertEqual(Object1, Result1),
 
     % Update object
@@ -177,12 +177,12 @@ cache_invalidation(_Config) ->
 
     % Check that we get updated version when requesting latest
     #domain_conf_v2_VersionedObject{object = Result2} =
-        dmt_client:checkout_object(Ref, latest),
+        dmt_client:checkout_object(latest, Ref),
     ?assertEqual(Object2, Result2),
 
     % Original version should still be available and cached
     #domain_conf_v2_VersionedObject{object = Historical} =
-        dmt_client:checkout_object(Ref, Version1),
+        dmt_client:checkout_object(Version1, Ref),
     ?assertEqual(Object1, Historical).
 %% Internal functions
 
