@@ -141,7 +141,12 @@ do_search(Reference, Type, Opts) ->
 
 do_checkout_object(Reference, ObjectReference, Opts) ->
     Version = ref_to_version(Reference),
-    dmt_client_cache:get_object(ObjectReference, Version, Opts).
+    case {Version, dmt_client_cache:get_object(ObjectReference, Version, Opts)} of
+        %% NOTE Absence of object in virtual version 0 must be
+        %% interpreted accordingly.
+        {0, {error, version_not_found}} -> {error, object_not_found};
+        {_, Result} -> Result
+    end.
 
 -spec commit(version(), [operation()], author_id()) -> commit_response() | no_return().
 commit(Version, Operations, AuthorID) ->
