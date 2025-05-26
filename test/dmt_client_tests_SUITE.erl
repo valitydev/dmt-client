@@ -40,8 +40,8 @@
 -spec all() -> [{group, atom()}].
 all() ->
     [
-        {group, sequential_operations},
-        {group, parallel_operations}
+        {group, parallel_operations},
+        {group, sequential_operations}
     ].
 
 -spec groups() -> [{atom(), list(), [atom()]}].
