@@ -121,8 +121,7 @@ checkout_object(Reference, ObjectReference) ->
 
 -spec checkout_object(version(), object_ref(), opts()) -> versioned_object() | no_return().
 checkout_object(Reference, ObjectReference, Opts) ->
-    Version = ref_to_version(Reference),
-    unwrap(do_checkout_object(Version, ObjectReference, Opts)).
+    unwrap(do_checkout_object(Reference, ObjectReference, Opts)).
 
 -spec checkout_objects_by_type(object_type(), opts()) -> [versioned_object()] | no_return().
 checkout_objects_by_type(Type, Opts) ->
@@ -140,7 +139,8 @@ do_search(Reference, Type, Opts) ->
     ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
     VersionedObjects.
 
-do_checkout_object(Version, ObjectReference, Opts) ->
+do_checkout_object(Reference, ObjectReference, Opts) ->
+    Version = ref_to_version(Reference),
     case {Version, dmt_client_cache:get_object(ObjectReference, Version, Opts)} of
         %% NOTE Absence of object in virtual version 0 must be
         %% interpreted accordingly.
@@ -243,7 +243,12 @@ upsert(Reference, NewObjects, AuthorID, Opts) ->
         [],
         NewObjects
     ),
-    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% FIXME Race condition:
+    %% - If version reference is "latest" then insert operations can
+    %% become rancid, which can lead to insertion conflicts.
+    %% - If version is specified number then whole commit operations
+    %% can become old.
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Version, Operations, AuthorID, Opts),
     %% TODO Update local cache after successful commit
     NewVersion.
 
