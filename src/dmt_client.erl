@@ -131,11 +131,13 @@ checkout_objects_by_type(Type, Opts) ->
 checkout_objects_by_type(Reference, Type, Opts) ->
     do_search(Reference, Type, Opts).
 
--define(CHUNK_SIZE, 20).
+%% This defines how my objects are retrieved with each search request.
+-define(CHUNK_SIZE, 100).
+-define(WILDECARD, ~b"*").
 
 do_search(Reference, Type, Opts) ->
     Version = ref_to_version(Reference),
-    VersionedObjects = search_and_collect_objects(Version, ~b"*", Type, ?CHUNK_SIZE, Opts),
+    VersionedObjects = search_and_collect_objects(Version, ?WILDECARD, Type, ?CHUNK_SIZE, Opts),
     ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
     VersionedObjects.
 
