@@ -121,7 +121,8 @@ checkout_object(Reference, ObjectReference) ->
 
 -spec checkout_object(version(), object_ref(), opts()) -> versioned_object() | no_return().
 checkout_object(Reference, ObjectReference, Opts) ->
-    unwrap(do_checkout_object(Reference, ObjectReference, Opts)).
+    Version = ref_to_version(Reference),
+    unwrap(do_checkout_object(Version, ObjectReference, Opts)).
 
 -spec checkout_objects_by_type(object_type(), opts()) -> [versioned_object()] | no_return().
 checkout_objects_by_type(Type, Opts) ->
@@ -139,8 +140,7 @@ do_search(Reference, Type, Opts) ->
     ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
     VersionedObjects.
 
-do_checkout_object(Reference, ObjectReference, Opts) ->
-    Version = ref_to_version(Reference),
+do_checkout_object(Version, ObjectReference, Opts) ->
     case {Version, dmt_client_cache:get_object(ObjectReference, Version, Opts)} of
         %% NOTE Absence of object in virtual version 0 must be
         %% interpreted accordingly.
@@ -216,10 +216,11 @@ upsert(Reference, Objects, AuthorID) ->
 
 -spec upsert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
 upsert(Reference, NewObjects, AuthorID, Opts) ->
+    Version = ref_to_version(Reference),
     Operations = lists:foldl(
         fun(NewObject, Ops) ->
             ObjectRef = dmt_client_object:get_ref(NewObject),
-            case do_checkout_object(Reference, ObjectRef, Opts) of
+            case do_checkout_object(Version, ObjectRef, Opts) of
                 {error, version_not_found = Reason} ->
                     erlang:error(Reason);
                 {ok, #domain_conf_v2_VersionedObject{object = NewObject}} ->
