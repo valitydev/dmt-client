@@ -1,39 +1,61 @@
 -module(dmt_client_backend).
 
--export([commit/3]).
--export([checkout/2]).
+-export([search/6]).
+-export([commit/4]).
 -export([checkout_object/3]).
--export([pull_range/3]).
+-export([get_latest_version/1]).
 
 %%% Behaviour callbacks
 
--callback commit(dmt_client:vsn(), dmt_client:commit(), dmt_client:opts()) -> dmt_client:vsn() | no_return().
+-callback search(
+    dmt_client:vsn(),
+    dmt_client:search_pattern(),
+    dmt_client:object_type(),
+    dmt_client:limit(),
+    dmt_client:continuation_token() | undefined,
+    dmt_client:opts()
+) -> dmt_client:search_full_response() | no_return().
 
--callback checkout(dmt_client:ref(), dmt_client:opts()) -> dmt_client:snapshot() | no_return().
+-callback commit(
+    dmt_client:vsn(),
+    [dmt_client:operation()],
+    dmt_client:author_id(),
+    dmt_client:opts()
+) -> dmt_client:commit_response() | no_return().
 
--callback checkout_object(dmt_client:ref(), dmt_client:object_ref(), dmt_client:opts()) ->
-    dmsl_domain_thrift:'DomainObject'() | no_return().
-
--callback pull_range(dmt_client:vsn(), dmt_client:limit(), dmt_client:opts()) -> dmt_client:history() | no_return().
+-callback checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
+    dmt_client:versioned_object() | no_return().
 
 %%% API
 
--spec commit(dmt_client:vsn(), dmt_client:commit(), dmt_client:opts()) -> dmt_client:vsn() | no_return().
-commit(Version, Commit, Opts) ->
-    call(commit, [Version, Commit, Opts]).
+-spec search(
+    dmt_client:vsn(),
+    dmt_client:search_pattern(),
+    dmt_client:object_type(),
+    dmt_client:limit(),
+    dmt_client:continuation_token() | undefined,
+    dmt_client:opts()
+) -> dmt_client:search_full_response() | no_return().
+search(Version, Pattern, Type, Limit, Token, Opts) ->
+    call(search, [Version, Pattern, Type, Limit, Token, Opts]).
 
--spec checkout(dmt_client:ref(), dmt_client:opts()) -> dmt_client:snapshot() | no_return().
-checkout(Reference, Opts) ->
-    call(checkout, [Reference, Opts]).
+-spec commit(
+    dmt_client:vsn(),
+    [dmt_client:operation()],
+    dmt_client:author_id(),
+    dmt_client:opts()
+) -> dmt_client:commit_response() | no_return().
+commit(Version, Operations, AuthorID, Opts) ->
+    call(commit, [Version, Operations, AuthorID, Opts]).
 
--spec checkout_object(dmt_client:ref(), dmt_client:object_ref(), dmt_client:opts()) ->
-    dmsl_domain_thrift:'DomainObject'() | no_return().
-checkout_object(Reference, ObjectReference, Opts) ->
-    call(checkout_object, [Reference, ObjectReference, Opts]).
+-spec checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
+    dmt_client:versioned_object() | no_return().
+checkout_object(Version, ObjectReference, Opts) ->
+    call(checkout_object, [Version, ObjectReference, Opts]).
 
--spec pull_range(dmt_client:vsn(), dmt_client:limit(), dmt_client:opts()) -> dmt_client:history() | no_return().
-pull_range(After, Limit, Opts) ->
-    call(pull_range, [After, Limit, Opts]).
+-spec get_latest_version(dmt_client:opts()) -> number() | no_return().
+get_latest_version(Opts) ->
+    call(get_latest_version, [Opts]).
 
 %%% Internal functions
 

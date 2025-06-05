@@ -2,27 +2,44 @@
 
 -behaviour(dmt_client_backend).
 
--export([commit/3]).
--export([checkout/2]).
--export([pull_range/3]).
+-export([search/6]).
+-export([commit/4]).
 -export([checkout_object/3]).
+-export([get_latest_version/1]).
 
--spec commit(dmt_client:vsn(), dmt_client:commit(), dmt_client:opts()) -> dmt_client:vsn() | no_return().
-commit(Version, Commit, Opts) ->
-    call('Repository', 'Commit', {Version, Commit}, Opts).
+-include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
 
--spec checkout(dmt_client:ref(), dmt_client:opts()) -> dmt_client:snapshot() | no_return().
-checkout(Reference, Opts) ->
-    call('Repository', 'Checkout', {Reference}, Opts).
+-spec search(
+    dmt_client:vsn(),
+    dmt_client:search_pattern(),
+    dmt_client:object_type(),
+    dmt_client:limit(),
+    dmt_client:continuation_token() | undefined,
+    dmt_client:opts()
+) -> dmt_client:search_full_response() | no_return().
+search(Version, Pattern, Type, Limit, Token, Opts) ->
+    Params = make_search_params(Pattern, Version, Limit, Type, Token),
+    call('Repository', 'SearchFullObjects', {Params}, Opts).
 
--spec pull_range(dmt_client:vsn(), dmt_client:limit(), dmt_client:opts()) -> dmt_client:history() | no_return().
-pull_range(After, Limit, Opts) ->
-    call('Repository', 'PullRange', {After, Limit}, Opts).
+-spec commit(
+    dmt_client:vsn(),
+    [dmt_client:operation()],
+    dmt_client:author_id(),
+    dmt_client:opts()
+) ->
+    dmt_client:commit_response() | no_return().
+commit(Version, Operations, AuthorID, Opts) ->
+    call('Repository', 'Commit', {Version, Operations, AuthorID}, Opts).
 
--spec checkout_object(dmt_client:ref(), dmt_client:object_ref(), dmt_client:opts()) ->
-    dmsl_domain_thrift:'DomainObject'() | no_return().
-checkout_object(Reference, ObjectReference, Opts) ->
-    call('RepositoryClient', 'checkoutObject', {Reference, ObjectReference}, Opts).
+-spec checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
+    dmt_client:versioned_object() | no_return().
+checkout_object(Version, ObjectReference, Opts) ->
+    VersionRef = {version, Version},
+    call('RepositoryClient', 'CheckoutObject', {VersionRef, ObjectReference}, Opts).
+
+-spec get_latest_version(dmt_client:opts()) -> number() | no_return().
+get_latest_version(Opts) ->
+    call('Repository', 'GetLatestVersion', {}, Opts).
 
 call(ServiceName, Function, Args, Opts) ->
     Url = get_service_url(ServiceName),
@@ -37,17 +54,14 @@ call(ServiceName, Function, Args, Opts) ->
             )
         ),
 
-    CallOpts = #{
-        url => Url,
-        event_handler => get_event_handlers(),
-        transport_opts => TransportOpts
-    },
+    CallOpts =
+        #{
+            url => Url,
+            event_handler => get_event_handlers(),
+            transport_opts => TransportOpts
+        },
 
-    Context =
-        case maps:find(woody_context, Opts) of
-            error -> woody_context:new();
-            {ok, Ctx} -> Ctx
-        end,
+    Context = maps:get(woody_context, Opts, woody_context:new()),
 
     case woody_client:call(Call, CallOpts, Context) of
         {ok, Response} ->
@@ -63,9 +77,18 @@ get_service_modname(ServiceName) ->
     {get_service_module(ServiceName), ServiceName}.
 
 get_service_module('Repository') ->
-    dmsl_domain_conf_thrift;
+    dmsl_domain_conf_v2_thrift;
 get_service_module('RepositoryClient') ->
-    dmsl_domain_conf_thrift.
+    dmsl_domain_conf_v2_thrift.
 
 get_event_handlers() ->
     genlib_app:env(dmt_client, woody_event_handlers, []).
+
+make_search_params(Pattern, Version, Limit, Type, Token) ->
+    #domain_conf_v2_SearchRequestParams{
+        query = Pattern,
+        version = Version,
+        limit = Limit,
+        type = Type,
+        continuation_token = Token
+    }.

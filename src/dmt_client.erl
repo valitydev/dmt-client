@@ -7,45 +7,36 @@
 -behaviour(application).
 
 %% API
--export([try_checkout_data/1]).
--export([try_checkout_data/2]).
--export([checkout/0]).
--export([checkout/1]).
--export([checkout/2]).
+-export([checkout_all/1]).
+-export([checkout_all/2]).
 -export([checkout_object/1]).
 -export([checkout_object/2]).
 -export([checkout_object/3]).
--export([checkout_versioned_object/1]).
--export([checkout_versioned_object/2]).
--export([checkout_versioned_object/3]).
--export([checkout_objects_by_type/1]).
 -export([checkout_objects_by_type/2]).
 -export([checkout_objects_by_type/3]).
--export([checkout_filter_objects/1]).
--export([checkout_filter_objects/2]).
--export([checkout_filter_objects/3]).
--export([checkout_fold_objects/2]).
--export([checkout_fold_objects/3]).
--export([checkout_fold_objects/4]).
--export([commit/1]).
--export([commit/2]).
 -export([commit/3]).
--export([get_last_version/0]).
--export([pull_range/1]).
--export([pull_range/2]).
--export([pull_range/3]).
--export([insert/1]).
+-export([commit/4]).
+-export([get_latest_version/0]).
 -export([insert/2]).
 -export([insert/3]).
--export([update/1]).
+-export([insert/4]).
 -export([update/2]).
 -export([update/3]).
--export([upsert/1]).
+-export([update/4]).
 -export([upsert/2]).
 -export([upsert/3]).
--export([remove/1]).
+-export([upsert/4]).
 -export([remove/2]).
 -export([remove/3]).
+-export([remove/4]).
+
+% AuthorManagement API
+
+-export([create_author/2]).
+-export([create_author/3]).
+-export([get_author/1]).
+-export([get_author_by_email/1]).
+-export([delete_author/1]).
 
 %% Health check API
 -export([health_check/0]).
@@ -57,326 +48,264 @@
 -export([start/2]).
 -export([stop/1]).
 
--export_type([ref/0]).
 -export_type([vsn/0]).
 -export_type([vsn_created_at/0]).
 -export_type([version/0]).
--export_type([limit/0]).
--export_type([snapshot/0]).
--export_type([commit/0]).
+-export_type([ref/0]).
+-export_type([versioned_object/0]).
+-export_type([operation/0]).
+-export_type([commit_response/0]).
 -export_type([object_ref/0]).
--export_type([object_type/0]).
--export_type([object_filter/0]).
--export_type([object_folder/1]).
 -export_type([domain_object/0]).
--export_type([untagged_domain_object/0]).
--export_type([domain/0]).
--export_type([history/0]).
+-export_type([refless_domain_object/0]).
 -export_type([opts/0]).
 
--include_lib("damsel/include/dmsl_domain_conf_thrift.hrl").
+-export_type([author_id/0]).
+-export_type([author_email/0]).
+-export_type([author/0]).
+-export_type([author_params/0]).
 
--type ref() :: dmsl_domain_conf_thrift:'Reference'().
--type vsn() :: dmsl_domain_conf_thrift:'Version'().
--type vsn_created_at() :: dmsl_base_thrift:'Timestamp'() | undefined.
+-export_type([object_type/0]).
+-export_type([search_pattern/0]).
+-export_type([limit/0]).
+-export_type([continuation_token/0]).
+-export_type([search_full_response/0]).
+
+-include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
+
+-type vsn_created_at() :: dmsl_base_thrift:'Timestamp'().
 -type version() :: vsn() | latest.
--type limit() :: dmsl_domain_conf_thrift:'Limit'().
--type snapshot() :: dmsl_domain_conf_thrift:'Snapshot'().
--type commit() :: dmsl_domain_conf_thrift:'Commit'().
+-type vsn() :: dmsl_domain_conf_v2_thrift:'Version'().
+-type ref() :: dmsl_domain_conf_v2_thrift:'VersionReference'().
+-type operation() :: dmsl_domain_conf_v2_thrift:'Operation'().
 -type object_ref() :: dmsl_domain_thrift:'Reference'().
--type object_type() :: atom().
--type object_filter() :: fun((object_type(), domain_object()) -> boolean()).
--type object_folder(Acc) :: fun((object_type(), domain_object(), Acc) -> Acc).
+-type versioned_object() :: dmsl_domain_conf_v2_thrift:'VersionedObject'().
+-type refless_domain_object() :: dmsl_domain_thrift:'ReflessDomainObject'().
 -type domain_object() :: dmsl_domain_thrift:'DomainObject'().
-%% HACK: this is type required for checkout_objects_by_type:
-%% domain_object is any object from union, tagged with it's name
-%% yet there's no way to extract typespecs for untagged objects
--type untagged_domain_object() :: tuple().
--type versioned_object() :: dmsl_domain_conf_thrift:'VersionedObject'().
--type domain() :: dmsl_domain_thrift:'Domain'().
--type history() :: dmsl_domain_conf_thrift:'History'().
+-type commit_response() :: dmsl_domain_conf_v2_thrift:'CommitResponse'().
 -type opts() :: #{
     transport_opts => woody_client_thrift_http_transport:transport_options(),
     woody_context => woody_context:ctx()
 }.
 
+-type author_id() :: dmsl_domain_conf_v2_thrift:'AuthorID'().
+-type author_name() :: dmsl_domain_conf_v2_thrift:'AuthorName'().
+-type author_email() :: dmsl_domain_conf_v2_thrift:'AuthorEmail'().
+-type author() :: dmsl_domain_conf_v2_thrift:'Author'().
+-type author_params() :: dmsl_domain_conf_v2_thrift:'AuthorParams'().
+
+%% TODO Move those to backend behaviour maybe?
+-type object_type() :: dmsl_domain_thrift:'DomainObjectType'().
+-type search_pattern() :: binary().
+-type limit() :: pos_integer().
+-type continuation_token() :: dmsl_domain_conf_v2_thrift:'ContinuationToken'().
+-type search_full_response() :: dmsl_domain_conf_v2_thrift:'SearchFullResponse'().
+
 %%% API
 
--spec try_checkout_data(object_ref()) ->
-    {ok, untagged_domain_object()} | {error, object_not_found} | no_return().
-try_checkout_data(ObjectRef) ->
-    try_checkout_data(get_last_version(), ObjectRef).
+-spec checkout_all(version()) -> [versioned_object()].
+checkout_all(Reference) ->
+    checkout_all(Reference, #{}).
 
--spec try_checkout_data(version(), object_ref()) ->
-    {ok, untagged_domain_object()} | {error, object_not_found} | no_return().
-try_checkout_data(Version, Ref) ->
-    case do_checkout_object(Version, Ref, #{}) of
-        {ok, {_Type, Object}} ->
-            %% HACK: attempt not to be tied to a specific composition of domain object tuple
-            {ok, erlang:element(3, Object)};
-        {error, object_not_found} = NotFound ->
-            NotFound;
-        {error, Error} ->
-            erlang:error(Error)
-    end.
+-spec checkout_all(version(), opts()) -> [versioned_object()].
+checkout_all(Reference, Opts) ->
+    do_search(Reference, undefined, Opts).
 
--spec checkout() -> snapshot() | no_return().
-checkout() ->
-    checkout(latest).
-
--spec checkout(version()) -> snapshot() | no_return().
-checkout(Reference) ->
-    checkout(Reference, #{}).
-
--spec checkout(version(), opts()) -> snapshot() | no_return().
-checkout(Reference, Opts) ->
-    Version = ref_to_version(Reference),
-    case dmt_client_cache:get(Version, Opts) of
-        {ok, Snapshot} ->
-            Snapshot;
-        {error, Error} ->
-            erlang:error(Error)
-    end.
-
--spec checkout_object(object_ref()) -> domain_object() | no_return().
+-spec checkout_object(object_ref()) -> versioned_object() | no_return().
 checkout_object(ObjectReference) ->
     checkout_object(latest, ObjectReference).
 
--spec checkout_object(version(), object_ref()) -> domain_object() | no_return().
+-spec checkout_object(version(), object_ref()) -> versioned_object() | no_return().
 checkout_object(Reference, ObjectReference) ->
     checkout_object(Reference, ObjectReference, #{}).
 
--spec checkout_object(version(), object_ref(), opts()) -> domain_object() | no_return().
+-spec checkout_object(version(), object_ref(), opts()) -> versioned_object() | no_return().
 checkout_object(Reference, ObjectReference, Opts) ->
     unwrap(do_checkout_object(Reference, ObjectReference, Opts)).
 
+-spec checkout_objects_by_type(object_type(), opts()) -> [versioned_object()] | no_return().
+checkout_objects_by_type(Type, Opts) ->
+    checkout_objects_by_type(latest, Type, Opts).
+
+-spec checkout_objects_by_type(version(), object_type(), opts()) -> [versioned_object()] | no_return().
+checkout_objects_by_type(Reference, Type, Opts) ->
+    do_search(Reference, Type, Opts).
+
+%% This defines how my objects are retrieved with each search request.
+-define(CHUNK_SIZE, 100).
+-define(WILDECARD, ~b"*").
+
+do_search(Reference, Type, Opts) ->
+    Version = ref_to_version(Reference),
+    VersionedObjects = search_and_collect_objects(Version, ?WILDECARD, Type, ?CHUNK_SIZE, Opts),
+    ok = dmt_client_cache:update_with_objects(Version, VersionedObjects),
+    VersionedObjects.
+
 do_checkout_object(Reference, ObjectReference, Opts) ->
     Version = ref_to_version(Reference),
-    dmt_client_cache:get_object(Version, ObjectReference, Opts).
+    case {Version, dmt_client_cache:get_object(ObjectReference, Version, Opts)} of
+        %% NOTE Absence of object in virtual version 0 must be
+        %% interpreted accordingly.
+        {0, {error, version_not_found}} -> {error, object_not_found};
+        {_, Result} -> Result
+    end.
 
--spec checkout_versioned_object(object_ref()) -> versioned_object() | no_return().
-checkout_versioned_object(ObjectReference) ->
-    checkout_versioned_object(latest, ObjectReference).
+-spec commit(version(), [operation()], author_id()) -> commit_response() | no_return().
+commit(Version, Operations, AuthorID) ->
+    commit(Version, Operations, AuthorID, #{}).
 
--spec checkout_versioned_object(version(), object_ref()) -> versioned_object() | no_return().
-checkout_versioned_object(Reference, ObjectReference) ->
-    checkout_versioned_object(Reference, ObjectReference, #{}).
-
--spec checkout_versioned_object(version(), object_ref(), opts()) -> versioned_object() | no_return().
-checkout_versioned_object(Reference, ObjectReference, Opts) ->
+-spec commit(version(), [operation()], author_id(), opts()) -> commit_response() | no_return().
+commit(Reference, Operations, AuthorID, Opts) ->
     Version = ref_to_version(Reference),
-    #domain_conf_VersionedObject{
-        version = Version,
-        object = checkout_object(Reference, ObjectReference, Opts)
-    }.
+    dmt_client_backend:commit(Version, Operations, AuthorID, Opts).
 
--spec checkout_objects_by_type(object_type()) -> [untagged_domain_object()] | no_return().
-checkout_objects_by_type(ObjectType) ->
-    checkout_objects_by_type(latest, ObjectType).
+-spec get_latest_version() -> vsn() | no_return().
+get_latest_version() ->
+    dmt_client_backend:get_latest_version(#{}).
 
--spec checkout_objects_by_type(version(), object_type()) -> [untagged_domain_object()] | no_return().
-checkout_objects_by_type(Reference, ObjectType) ->
-    checkout_objects_by_type(Reference, ObjectType, #{}).
+-spec insert(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+insert(Objects, AuthorID) ->
+    insert(latest, Objects, AuthorID).
 
--spec checkout_objects_by_type(version(), object_type(), opts()) -> [untagged_domain_object()] | no_return().
-checkout_objects_by_type(Reference, ObjectType, Opts) ->
+-spec insert(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+insert(Reference, Object, AuthorID) when not is_list(Object) ->
+    insert(Reference, [Object], AuthorID);
+insert(Reference, Objects, AuthorID) ->
+    insert(Reference, Objects, AuthorID, #{}).
+
+-spec insert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+insert(Reference, Objects, AuthorID, Opts) ->
+    Operations = [
+        {insert, #domain_conf_v2_InsertOp{
+            object = dmt_client_object:make_refless(Object),
+            force_ref = dmt_client_object:get_ref(Object)
+        }}
+     || Object <- Objects
+    ],
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
+
+-spec update(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+update(Objects, AuthorID) ->
+    update(latest, Objects, AuthorID).
+
+-spec update(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+update(Reference, Object, AuthorID) when not is_list(Object) ->
+    update(Reference, [Object], AuthorID);
+update(Reference, Objects, AuthorID) ->
+    update(Reference, Objects, AuthorID, #{}).
+
+-spec update(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+update(Reference, NewObjects, AuthorID, Opts) ->
+    Operations = [
+        {update, #domain_conf_v2_UpdateOp{object = NewObject}}
+     || NewObject <- NewObjects
+    ],
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
+
+-spec upsert(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+upsert(Objects, AuthorID) ->
+    upsert(latest, Objects, AuthorID).
+
+-spec upsert(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+upsert(Reference, Object, AuthorID) when not is_list(Object) ->
+    upsert(Reference, [Object], AuthorID);
+upsert(Reference, Objects, AuthorID) ->
+    upsert(Reference, Objects, AuthorID, #{}).
+
+-spec upsert(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+upsert(Reference, NewObjects, AuthorID, Opts) ->
     Version = ref_to_version(Reference),
-    unwrap(dmt_client_cache:get_objects_by_type(Version, ObjectType, Opts)).
+    Operations = lists:foldl(
+        fun(NewObject, Ops) ->
+            ObjectRef = dmt_client_object:get_ref(NewObject),
+            case do_checkout_object(Version, ObjectRef, Opts) of
+                {error, version_not_found = Reason} ->
+                    erlang:error(Reason);
+                {ok, #domain_conf_v2_VersionedObject{object = NewObject}} ->
+                    Ops;
+                {ok, #domain_conf_v2_VersionedObject{object = _OldObject}} ->
+                    [
+                        {update, #domain_conf_v2_UpdateOp{object = NewObject}}
+                        | Ops
+                    ];
+                {error, object_not_found} ->
+                    [
+                        {insert, #domain_conf_v2_InsertOp{
+                            object = dmt_client_object:make_refless(NewObject),
+                            force_ref = ObjectRef
+                        }}
+                        | Ops
+                    ]
+            end
+        end,
+        [],
+        NewObjects
+    ),
+    %% FIXME Race condition:
+    %% - If version reference is "latest" then insert operations can
+    %% become rancid, which can lead to insertion conflicts.
+    %% - If version is specified number then whole commit operations
+    %% can become old.
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Version, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
 
--spec checkout_filter_objects(object_filter()) -> [{object_type(), domain_object()}] | no_return().
-checkout_filter_objects(Filter) ->
-    checkout_filter_objects(latest, Filter).
+-spec remove(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+remove(Objects, AuthorID) ->
+    remove(latest, Objects, AuthorID).
 
--spec checkout_filter_objects(version(), object_filter()) -> [{object_type(), domain_object()}] | no_return().
-checkout_filter_objects(Reference, Filter) ->
-    checkout_filter_objects(Reference, Filter, #{}).
+-spec remove(version(), domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
+remove(Reference, Object, AuthorID) when not is_list(Object) ->
+    remove(Reference, [Object], AuthorID);
+remove(Reference, Objects, AuthorID) ->
+    remove(Reference, Objects, AuthorID, #{}).
 
--spec checkout_filter_objects(version(), object_filter(), opts()) -> [{object_type(), domain_object()}] | no_return().
-checkout_filter_objects(Reference, Filter, Opts) ->
-    Folder = fun(Type, Object, Acc) ->
-        case Filter(Type, Object) of
-            true -> [{Type, Object} | Acc];
-            false -> Acc
-        end
-    end,
-    checkout_fold_objects(Reference, Folder, [], Opts).
+-spec remove(version(), [domain_object()], author_id(), opts()) -> vsn() | no_return().
+remove(Reference, Objects, AuthorID, Opts) ->
+    Operations = [
+        {remove, #domain_conf_v2_RemoveOp{ref = dmt_client_object:get_ref(Object)}}
+     || Object <- Objects
+    ],
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    %% TODO Update local cache after successful commit
+    NewVersion.
 
--spec checkout_fold_objects(object_folder(Acc), Acc) -> Acc | no_return().
-checkout_fold_objects(Folder, Acc) ->
-    checkout_fold_objects(latest, Folder, Acc).
+%% AuthorManagement
 
--spec checkout_fold_objects(version(), object_folder(Acc), Acc) -> Acc | no_return().
-checkout_fold_objects(Reference, Folder, Acc) ->
-    checkout_fold_objects(Reference, Folder, Acc, #{}).
+-spec create_author(author_name(), author_email()) -> dmt_client_author:author_id() | no_return().
+create_author(Name, Email) ->
+    create_author(Name, Email, #{}).
 
--spec checkout_fold_objects(version(), object_folder(Acc), Acc, opts()) -> Acc | no_return().
-checkout_fold_objects(Reference, Folder, Acc, Opts) ->
-    Version = ref_to_version(Reference),
-    unwrap(dmt_client_cache:fold_objects(Version, Folder, Acc, Opts)).
+-spec create_author(author_name(), author_email(), dmt_client_author:opts()) ->
+    dmt_client_author:author_id() | no_return().
+create_author(Name, Email, Opts) ->
+    Params = #domain_conf_v2_AuthorParams{email = Email, name = Name},
+    #domain_conf_v2_Author{id = ID} =
+        dmt_client_author:create(Params, Opts),
+    ID.
 
--spec commit(commit()) -> vsn() | no_return().
-commit(Commit) ->
-    commit(latest, Commit).
+-spec get_author(author_id()) -> author().
+get_author(ID) ->
+    dmt_client_author:get(ID).
 
--spec commit(version(), commit()) -> vsn() | no_return().
-commit(Reference, Commit) ->
-    commit(Reference, Commit, #{}).
+-spec get_author_by_email(author_email()) -> author().
+get_author_by_email(Email) ->
+    dmt_client_author:get_by_email(Email).
 
--spec commit(version(), commit(), opts()) -> vsn() | no_return().
-commit(Reference, Commit, Opts) ->
-    Version = updating_ref_to_version(Reference),
-    do_commit(Version, Commit, Opts).
-
-%% Without Pre-commit cache update version of commit with explicit version
-do_commit(Version, Commit, Opts) ->
-    Result = dmt_client_backend:commit(Version, Commit, Opts),
-    _NewVersion = unwrap(dmt_client_cache:update()),
-    Result.
-
--spec get_last_version() -> vsn().
-get_last_version() ->
-    dmt_client_cache:get_last_version().
-
--spec pull_range(limit()) -> history() | no_return().
-pull_range(Limit) ->
-    pull_range(latest, Limit).
-
--spec pull_range(version(), limit()) -> history() | no_return().
-pull_range(Reference, Limit) ->
-    pull_range(Reference, Limit, #{}).
-
--spec pull_range(version(), limit(), opts()) -> history() | no_return().
-pull_range(Reference, Limit, Opts) ->
-    Version = ref_to_version(Reference),
-    dmt_client_backend:pull_range(Version, Limit, Opts).
-
-%% Convenience Shortcuts
-%% Use carefully:
-%% - some of them have suboptimal performance (see update implementation)
-%% - and all of them do not let combine operations (insert X + update Ys + remove Z),
-%%   so the changes will be split via N (3 in this case) commits and won't be transactional
-
-%% TODO Allow to set creation timestamp
-
--spec insert(domain_object() | [domain_object()]) -> vsn() | no_return().
-insert(ObjectOrObjects) ->
-    insert(latest, ObjectOrObjects).
-
--spec insert(version(), domain_object() | [domain_object()]) -> vsn() | no_return().
-insert(Reference, Object) when not is_list(Object) ->
-    insert(Reference, [Object]);
-insert(Reference, Objects) ->
-    insert(Reference, Objects, #{}).
-
--spec insert(version(), domain_object() | [domain_object()], opts()) -> vsn() | no_return().
-insert(Reference, Objects, Opts) ->
-    Commit = #domain_conf_Commit{
-        ops = [
-            {insert, #domain_conf_InsertOp{
-                object = Object
-            }}
-         || Object <- Objects
-        ]
-    },
-    commit(Reference, Commit, Opts).
-
--spec update(domain_object() | [domain_object()]) -> vsn() | no_return().
-update(NewObjectOrObjects) ->
-    update(latest, NewObjectOrObjects).
-
--spec update(version(), domain_object() | [domain_object()]) -> vsn() | no_return().
-update(Reference, NewObject) when not is_list(NewObject) ->
-    update(Reference, [NewObject]);
-update(Reference, NewObjects) ->
-    update(Reference, NewObjects, #{}).
-
--spec update(version(), domain_object() | [domain_object()], opts()) -> vsn() | no_return().
-update(Reference, NewObjects, Opts) ->
-    Version = updating_ref_to_version(Reference),
-    Commit = #domain_conf_Commit{
-        ops = [
-            {update, #domain_conf_UpdateOp{
-                old_object = OldObject,
-                new_object = NewObject
-            }}
-         || NewObject = {Tag, {_ObjectName, Ref, _Data}} <- NewObjects,
-            OldObject <- [checkout_object(Version, {Tag, Ref}, Opts)]
-        ]
-    },
-    %% Don't need pre-commit update: done in the beginning
-    do_commit(Version, Commit, Opts).
-
--spec upsert(domain_object() | [domain_object()]) -> vsn() | no_return().
-upsert(NewObjectOrObjects) ->
-    upsert(latest, NewObjectOrObjects).
-
--spec upsert(version(), domain_object() | [domain_object()]) -> vsn() | no_return().
-upsert(Reference, NewObject) when not is_list(NewObject) ->
-    upsert(Reference, [NewObject]);
-upsert(Reference, NewObjects) ->
-    upsert(Reference, NewObjects, #{}).
-
--spec upsert(version(), domain_object() | [domain_object()], opts()) -> vsn() | no_return().
-upsert(Reference, NewObjects, Opts) ->
-    Version = updating_ref_to_version(Reference),
-    Commit = #domain_conf_Commit{
-        ops = lists:foldl(
-            fun(NewObject = {Tag, {ObjectName, Ref, _Data}}, Ops) ->
-                case unwrap_find(do_checkout_object(Version, {Tag, Ref}, Opts)) of
-                    {ok, NewObject} ->
-                        Ops;
-                    {ok, OldObject = {Tag, {ObjectName, Ref, _OldData}}} ->
-                        [
-                            {update, #domain_conf_UpdateOp{
-                                old_object = OldObject,
-                                new_object = NewObject
-                            }}
-                            | Ops
-                        ];
-                    {error, object_not_found} ->
-                        [
-                            {insert, #domain_conf_InsertOp{
-                                object = NewObject
-                            }}
-                            | Ops
-                        ]
-                end
-            end,
-            [],
-            NewObjects
-        )
-    },
-    %% Don't need pre-commit update: done in the beginning
-    do_commit(Version, Commit, Opts).
-
--spec remove(domain_object() | [domain_object()]) -> vsn() | no_return().
-remove(ObjectOrObjects) ->
-    remove(latest, ObjectOrObjects).
-
--spec remove(version(), domain_object() | [domain_object()]) -> vsn() | no_return().
-remove(Reference, Object) when not is_list(Object) ->
-    remove(Reference, [Object]);
-remove(Reference, Objects) ->
-    remove(Reference, Objects, #{}).
-
--spec remove(version(), domain_object() | [domain_object()], opts()) -> vsn() | no_return().
-remove(Reference, Objects, Opts) ->
-    Commit = #domain_conf_Commit{
-        ops = [
-            {remove, #domain_conf_RemoveOp{
-                object = Object
-            }}
-         || Object <- Objects
-        ]
-    },
-    commit(Reference, Commit, Opts).
+-spec delete_author(author_id()) -> ok.
+delete_author(ID) ->
+    dmt_client_author:delete(ID).
 
 %% Health check API
 
 -spec health_check() -> erl_health:result().
 health_check() ->
     try
-        _ = dmt_client_cache:get_last_version(),
+        % TODO Come up with healthcheck
         {passing, #{}}
     catch
         _Class:_Error ->
@@ -387,8 +316,20 @@ health_check() ->
 
 -spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
-    Cache = #{id => dmt_client_cache, start => {dmt_client_cache, start_link, []}, restart => permanent},
-    {ok, {#{strategy => one_for_one, intensity => 10, period => 60}, [Cache]}}.
+    Cache = #{
+        id => dmt_client_cache,
+        start => {dmt_client_cache, start_link, []},
+        restart => permanent
+    },
+    {ok,
+        {
+            #{
+                strategy => one_for_one,
+                intensity => 10,
+                period => 60
+            },
+            [Cache]
+        }}.
 
 %%% Application callbacks
 
@@ -405,21 +346,22 @@ stop(_State) ->
 unwrap({ok, Acc}) -> Acc;
 unwrap({error, {woody_error, _} = Error}) -> erlang:error(Error);
 unwrap({error, version_not_found = Reason}) -> erlang:error(Reason);
-unwrap({error, object_not_found}) -> erlang:throw(#domain_conf_ObjectNotFound{}).
+unwrap({error, object_not_found}) -> erlang:throw(#domain_conf_v2_ObjectNotFound{}).
 
-%% Pass object_not_found as is, raising only some of errors
-unwrap_find({error, {woody_error, _} = Error}) -> erlang:error(Error);
-unwrap_find({error, version_not_found = Reason}) -> erlang:error(Reason);
-unwrap_find(Other) -> Other.
-
--spec updating_ref_to_version(version()) -> vsn().
-updating_ref_to_version(latest) ->
-    unwrap(dmt_client_cache:update());
-updating_ref_to_version(Ref) ->
-    ref_to_version(Ref).
-
--spec ref_to_version(version()) -> vsn().
 ref_to_version(Version) when is_integer(Version) ->
     Version;
 ref_to_version(latest) ->
-    get_last_version().
+    get_latest_version().
+
+search_and_collect_objects(Version, Pattern, Type, Limit, Opts) ->
+    Getter = fun(Token) ->
+        dmt_client_backend:search(Version, Pattern, Type, Limit, Token, Opts)
+    end,
+    collect_objects(Getter(undefined), [], Getter).
+
+-define(SEARCH_RESULT(Chunk, Token), #domain_conf_v2_SearchFullResponse{result = Chunk, continuation_token = Token}).
+
+collect_objects(?SEARCH_RESULT(Chunk, Token), Chunks, _Getter) when Token =:= undefined ->
+    lists:flatten(lists:reverse([Chunk | Chunks]));
+collect_objects(?SEARCH_RESULT(Chunk, Token), Chunks, Getter) ->
+    collect_objects(Getter(Token), [Chunk | Chunks], Getter).
