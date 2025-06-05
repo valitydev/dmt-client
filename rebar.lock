@@ -5,7 +5,7 @@
  {<<"cowlib">>,{pkg,<<"cowlib">>,<<"2.11.0">>},2},
  {<<"damsel">>,
   {git,"https://github.com/valitydev/damsel.git",
-       {ref,"35a8abf6c006d744617d770aef5948a0322f2bd5"}},
+       {ref,"ba7414811590859d058817b8f22d2e9c22f627f8"}},
   0},
  {<<"dmt_core">>,
   {git,"https://github.com/valitydev/dmt-core.git",
@@ -37,7 +37,7 @@
   {git,"https://github.com/valitydev/thrift_erlang.git",
        {ref,"3a60e5dc5bbd709495024f26e100b041c3547fd9"}},
   1},
- {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.7.0">>},2},
+ {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.7.1">>},2},
  {<<"woody">>,
   {git,"https://github.com/valitydev/woody_erlang.git",
        {ref,"cc983a9423325ba1d6a509775eb6ff7ace721539"}},
@@ -60,7 +60,7 @@
  {<<"quantile_estimator">>, <<"EF50A361F11B5F26B5F16D0696E46A9E4661756492C981F7B2229EF42FF1CD15">>},
  {<<"ranch">>, <<"8C7A100A139FD57F17327B6413E4167AC559FBC04CA7448E9BE9057311597A1D">>},
  {<<"ssl_verify_fun">>, <<"354C321CF377240C7B8716899E182CE4890C5938111A1296ADD3EC74CF1715DF">>},
- {<<"unicode_util_compat">>, <<"BC84380C9AB48177092F43AC89E4DFA2C6D62B40B8BD132B1059ECC7232F9A78">>}]},
+ {<<"unicode_util_compat">>, <<"A48703A25C170EEDADCA83B11E88985AF08D35F37C6F664D6DCFB106A97782FC">>}]},
 {pkg_hash_ext,[
  {<<"cache">>, <<"44516CE6FA03594D3A2AF025DD3A87BFE711000EB730219E1DDEFC816E0AA2F4">>},
  {<<"certifi">>, <<"6AC7EFC1C6F8600B08D625292D4BBF584E14847CE1B6B5C44D983D273E1097EA">>},
@@ -78,5 +78,5 @@
  {<<"quantile_estimator">>, <<"282A8A323CA2A845C9E6F787D166348F776C1D4A41EDE63046D72D422E3DA946">>},
  {<<"ranch">>, <<"49FBCFD3682FAB1F5D109351B61257676DA1A2FDBE295904176D5E521A2DDFE5">>},
  {<<"ssl_verify_fun">>, <<"FE4C190E8F37401D30167C8C405EDA19469F34577987C76DDE613E838BBC67F8">>},
- {<<"unicode_util_compat">>, <<"25EEE6D67DF61960CF6A794239566599B09E17E668D3700247BC498638152521">>}]}
+ {<<"unicode_util_compat">>, <<"B3A917854CE3AE233619744AD1E0102E05673136776FB2FA76234F3E03B23642">>}]}
 ].
