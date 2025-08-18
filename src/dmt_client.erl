@@ -12,11 +12,18 @@
 -export([checkout_object/1]).
 -export([checkout_object/2]).
 -export([checkout_object/3]).
+-export([checkout_object_with_references/1]).
+-export([checkout_object_with_references/2]).
+-export([checkout_object_with_references/3]).
 -export([checkout_objects_by_type/2]).
 -export([checkout_objects_by_type/3]).
 -export([commit/3]).
 -export([commit/4]).
 -export([get_latest_version/0]).
+-export([get_related_graph/1]).
+-export([get_related_graph/2]).
+-export([make_related_graph_request/1]).
+-export([make_related_graph_request/2]).
 -export([insert/2]).
 -export([insert/3]).
 -export([insert/4]).
@@ -53,11 +60,14 @@
 -export_type([version/0]).
 -export_type([ref/0]).
 -export_type([versioned_object/0]).
+-export_type([versioned_object_with_references/0]).
 -export_type([operation/0]).
 -export_type([commit_response/0]).
 -export_type([object_ref/0]).
 -export_type([domain_object/0]).
 -export_type([refless_domain_object/0]).
+-export_type([related_graph_request/0]).
+-export_type([related_graph/0]).
 -export_type([opts/0]).
 
 -export_type([author_id/0]).
@@ -80,7 +90,10 @@
 -type operation() :: dmsl_domain_conf_v2_thrift:'Operation'().
 -type object_ref() :: dmsl_domain_thrift:'Reference'().
 -type versioned_object() :: dmsl_domain_conf_v2_thrift:'VersionedObject'().
+-type versioned_object_with_references() :: dmsl_domain_conf_v2_thrift:'VersionedObjectWithReferences'().
 -type refless_domain_object() :: dmsl_domain_thrift:'ReflessDomainObject'().
+-type related_graph_request() :: dmsl_domain_conf_v2_thrift:'RelatedGraphRequest'().
+-type related_graph() :: dmsl_domain_conf_v2_thrift:'RelatedGraph'().
 -type domain_object() :: dmsl_domain_thrift:'DomainObject'().
 -type commit_response() :: dmsl_domain_conf_v2_thrift:'CommitResponse'().
 -type opts() :: #{
@@ -123,11 +136,27 @@ checkout_object(Reference, ObjectReference) ->
 checkout_object(Reference, ObjectReference, Opts) ->
     unwrap(do_checkout_object(Reference, ObjectReference, Opts)).
 
+-spec checkout_object_with_references(object_ref()) ->
+    versioned_object_with_references() | no_return().
+checkout_object_with_references(ObjectReference) ->
+    checkout_object_with_references(latest, ObjectReference).
+
+-spec checkout_object_with_references(version(), object_ref()) ->
+    versioned_object_with_references() | no_return().
+checkout_object_with_references(Reference, ObjectReference) ->
+    checkout_object_with_references(Reference, ObjectReference, #{}).
+
+-spec checkout_object_with_references(version(), object_ref(), opts()) ->
+    versioned_object_with_references() | no_return().
+checkout_object_with_references(Reference, ObjectReference, Opts) ->
+    unwrap(do_checkout_object_with_references(Reference, ObjectReference, Opts)).
+
 -spec checkout_objects_by_type(object_type(), opts()) -> [versioned_object()] | no_return().
 checkout_objects_by_type(Type, Opts) ->
     checkout_objects_by_type(latest, Type, Opts).
 
--spec checkout_objects_by_type(version(), object_type(), opts()) -> [versioned_object()] | no_return().
+-spec checkout_objects_by_type(version(), object_type(), opts()) ->
+    [versioned_object()] | no_return().
 checkout_objects_by_type(Reference, Type, Opts) ->
     do_search(Reference, Type, Opts).
 
@@ -150,6 +179,17 @@ do_checkout_object(Reference, ObjectReference, Opts) ->
         {_, Result} -> Result
     end.
 
+do_checkout_object_with_references(Reference, ObjectReference, Opts) ->
+    Version = ref_to_version(Reference),
+    try
+        {ok, dmt_client_backend:checkout_object_with_references(Version, ObjectReference, Opts)}
+    catch
+        throw:#domain_conf_v2_VersionNotFound{} ->
+            {error, version_not_found};
+        throw:#domain_conf_v2_ObjectNotFound{} ->
+            {error, object_not_found}
+    end.
+
 -spec commit(version(), [operation()], author_id()) -> commit_response() | no_return().
 commit(Version, Operations, AuthorID) ->
     commit(Version, Operations, AuthorID, #{}).
@@ -162,6 +202,37 @@ commit(Reference, Operations, AuthorID, Opts) ->
 -spec get_latest_version() -> vsn() | no_return().
 get_latest_version() ->
     dmt_client_backend:get_latest_version(#{}).
+
+-spec get_related_graph(related_graph_request()) -> related_graph() | no_return().
+get_related_graph(Request) ->
+    get_related_graph(Request, #{}).
+
+-spec get_related_graph(related_graph_request(), opts()) -> related_graph() | no_return().
+get_related_graph(Request, Opts) ->
+    dmt_client_backend:get_related_graph(Request, Opts).
+
+%% Helper functions to construct RelatedGraphRequest
+
+-spec make_related_graph_request(object_ref()) -> related_graph_request().
+make_related_graph_request(ObjectRef) ->
+    make_related_graph_request(ObjectRef, #{}).
+
+-spec make_related_graph_request(object_ref(), #{
+    version => version(),
+    type => object_type(),
+    include_inbound => boolean(),
+    include_outbound => boolean(),
+    depth => pos_integer()
+}) -> related_graph_request().
+make_related_graph_request(ObjectRef, Options) ->
+    #domain_conf_v2_RelatedGraphRequest{
+        ref = ObjectRef,
+        version = maps:get(version, Options, undefined),
+        type = maps:get(type, Options, undefined),
+        include_inbound = maps:get(include_inbound, Options, true),
+        include_outbound = maps:get(include_outbound, Options, true),
+        depth = maps:get(depth, Options, 1)
+    }.
 
 -spec insert(domain_object() | [domain_object()], author_id()) -> vsn() | no_return().
 insert(Objects, AuthorID) ->
@@ -182,7 +253,9 @@ insert(Reference, Objects, AuthorID, Opts) ->
         }}
      || Object <- Objects
     ],
-    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(
+        Reference, Operations, AuthorID, Opts
+    ),
     %% TODO Update local cache after successful commit
     NewVersion.
 
@@ -202,7 +275,9 @@ update(Reference, NewObjects, AuthorID, Opts) ->
         {update, #domain_conf_v2_UpdateOp{object = NewObject}}
      || NewObject <- NewObjects
     ],
-    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(
+        Reference, Operations, AuthorID, Opts
+    ),
     %% TODO Update local cache after successful commit
     NewVersion.
 
@@ -250,7 +325,9 @@ upsert(Reference, NewObjects, AuthorID, Opts) ->
     %% become rancid, which can lead to insertion conflicts.
     %% - If version is specified number then whole commit operations
     %% can become old.
-    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Version, Operations, AuthorID, Opts),
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(
+        Version, Operations, AuthorID, Opts
+    ),
     %% TODO Update local cache after successful commit
     NewVersion.
 
@@ -270,7 +347,9 @@ remove(Reference, Objects, AuthorID, Opts) ->
         {remove, #domain_conf_v2_RemoveOp{ref = dmt_client_object:get_ref(Object)}}
      || Object <- Objects
     ],
-    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(Reference, Operations, AuthorID, Opts),
+    #domain_conf_v2_CommitResponse{version = NewVersion} = commit(
+        Reference, Operations, AuthorID, Opts
+    ),
     %% TODO Update local cache after successful commit
     NewVersion.
 
@@ -359,7 +438,9 @@ search_and_collect_objects(Version, Pattern, Type, Limit, Opts) ->
     end,
     collect_objects(Getter(undefined), [], Getter).
 
--define(SEARCH_RESULT(Chunk, Token), #domain_conf_v2_SearchFullResponse{result = Chunk, continuation_token = Token}).
+-define(SEARCH_RESULT(Chunk, Token), #domain_conf_v2_SearchFullResponse{
+    result = Chunk, continuation_token = Token
+}).
 
 collect_objects(?SEARCH_RESULT(Chunk, Token), Chunks, _Getter) when Token =:= undefined ->
     lists:flatten(lists:reverse([Chunk | Chunks]));
