@@ -5,7 +5,9 @@
 -export([search/6]).
 -export([commit/4]).
 -export([checkout_object/3]).
+-export([checkout_object_with_references/3]).
 -export([get_latest_version/1]).
+-export([get_related_graph/2]).
 
 -include_lib("damsel/include/dmsl_domain_conf_v2_thrift.hrl").
 
@@ -37,9 +39,20 @@ checkout_object(Version, ObjectReference, Opts) ->
     VersionRef = {version, Version},
     call('RepositoryClient', 'CheckoutObject', {VersionRef, ObjectReference}, Opts).
 
+-spec checkout_object_with_references(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
+    dmt_client:versioned_object_with_references() | no_return().
+checkout_object_with_references(Version, ObjectReference, Opts) ->
+    VersionRef = {version, Version},
+    call('RepositoryClient', 'CheckoutObjectWithReferences', {VersionRef, ObjectReference}, Opts).
+
 -spec get_latest_version(dmt_client:opts()) -> number() | no_return().
 get_latest_version(Opts) ->
     call('Repository', 'GetLatestVersion', {}, Opts).
+
+-spec get_related_graph(dmt_client:related_graph_request(), dmt_client:opts()) ->
+    dmt_client:related_graph() | no_return().
+get_related_graph(Request, Opts) ->
+    call('Repository', 'GetRelatedGraph', {Request}, Opts).
 
 call(ServiceName, Function, Args, Opts) ->
     Url = get_service_url(ServiceName),

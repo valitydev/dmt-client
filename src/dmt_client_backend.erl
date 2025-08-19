@@ -3,7 +3,9 @@
 -export([search/6]).
 -export([commit/4]).
 -export([checkout_object/3]).
+-export([checkout_object_with_references/3]).
 -export([get_latest_version/1]).
+-export([get_related_graph/2]).
 
 %%% Behaviour callbacks
 
@@ -25,6 +27,14 @@
 
 -callback checkout_object(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
     dmt_client:versioned_object() | no_return().
+
+-callback checkout_object_with_references(
+    dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()
+) ->
+    dmt_client:versioned_object_with_references() | no_return().
+
+-callback get_related_graph(dmt_client:related_graph_request(), dmt_client:opts()) ->
+    dmt_client:related_graph() | no_return().
 
 %%% API
 
@@ -53,9 +63,19 @@ commit(Version, Operations, AuthorID, Opts) ->
 checkout_object(Version, ObjectReference, Opts) ->
     call(checkout_object, [Version, ObjectReference, Opts]).
 
+-spec checkout_object_with_references(dmt_client:vsn(), dmt_client:object_ref(), dmt_client:opts()) ->
+    dmt_client:versioned_object_with_references() | no_return().
+checkout_object_with_references(Version, ObjectReference, Opts) ->
+    call(checkout_object_with_references, [Version, ObjectReference, Opts]).
+
 -spec get_latest_version(dmt_client:opts()) -> number() | no_return().
 get_latest_version(Opts) ->
     call(get_latest_version, [Opts]).
+
+-spec get_related_graph(dmt_client:related_graph_request(), dmt_client:opts()) ->
+    dmt_client:related_graph() | no_return().
+get_related_graph(Request, Opts) ->
+    call(get_related_graph, [Request, Opts]).
 
 %%% Internal functions
 
