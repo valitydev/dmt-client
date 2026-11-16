@@ -17,6 +17,8 @@
 -export([checkout_object_with_references/3]).
 -export([checkout_objects_by_type/2]).
 -export([checkout_objects_by_type/3]).
+-export([search/3]).
+-export([search/4]).
 -export([commit/3]).
 -export([commit/4]).
 -export([get_latest_version/0]).
@@ -163,6 +165,22 @@ checkout_objects_by_type(Reference, Type, Opts) ->
 %% This defines how my objects are retrieved with each search request.
 -define(CHUNK_SIZE, 100).
 -define(WILDCARD, ~b"*").
+
+%% @doc Search all result pages without reading or updating the object cache.
+%% Pattern is passed to the server unchanged; undefined Type searches all types.
+-spec search(search_pattern(), object_type() | undefined, opts()) -> [versioned_object()] | no_return().
+search(Pattern, Type, Opts) ->
+    search(latest, Pattern, Type, Opts).
+
+-spec search(version(), search_pattern(), object_type() | undefined, opts()) ->
+    [versioned_object()] | no_return().
+search(Reference, Pattern, Type, Opts) ->
+    Version =
+        case Reference of
+            latest -> dmt_client_backend:get_latest_version(Opts);
+            _ -> Reference
+        end,
+    search_and_collect_objects(Version, Pattern, Type, ?CHUNK_SIZE, Opts).
 
 do_search(Reference, Type, Opts) ->
     Version = ref_to_version(Reference),

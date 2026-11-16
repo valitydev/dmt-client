@@ -14,7 +14,7 @@
 -spec search(
     dmt_client:vsn(),
     dmt_client:search_pattern(),
-    dmt_client:object_type(),
+    dmt_client:object_type() | undefined,
     dmt_client:limit(),
     dmt_client:continuation_token() | undefined,
     dmt_client:opts()
